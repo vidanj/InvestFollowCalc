@@ -104,10 +104,11 @@ type AccountEvent =
 
 - `capitalAportadoNeto = saldoInicial + Σaportaciones − Σretiros`
 - `saldoActual = última valuación + flujos posteriores`. Si hay flujos sin valuación posterior, se marca "saldo estimado: actualiza tu saldo para calcular la ganancia".
-- `gananciaTotal = Σ ganancias de periodo`. **Invariante:** `= saldoActual − capitalAportadoNeto` cuando no hay flujos pendientes.
+- `gananciaTotal = Σ ganancias de periodo`. **Invariante:** `= saldoActual − capitalAportadoNeto`, siempre (también con flujos pendientes, porque ambos lados los incluyen).
 - `% simple = gananciaTotal / capitalAportadoNeto` (dato principal; "—" si el capital es ≤ 0).
 - `TWR = Π(1 + r_i) − 1` y `TWR anualizado = (1 + TWR)^(365/días) − 1`. Si hay menos de 30 días, se etiqueta como "estimado, periodo corto".
-- Tiempo transcurrido (días / semanas / meses), ganancia promedio por día y por mes, y mejor y peor periodo.
+- Tiempo transcurrido (días / semanas / meses) y ganancia promedio por día y por mes.
+- Mejor y peor periodo: **pendiente de decidir** si se ordenan por monto o por porcentaje; se implementa en la fase 3.
 
 **Portafolio (`portfolio.ts`):** agrega las cuentas **por moneda**. Nunca suma USD con MXN. Para el TWR del portafolio se encadenan los periodos combinando la línea de tiempo de las cuentas de esa moneda.
 
@@ -232,7 +233,7 @@ ganancias de aportaciones/retiros. Multi-cuenta, monedas USD y MXN. Datos 100% l
 - Nunca sumar montos de monedas distintas. Toda cantidad lleva su `Currency`.
 - `src/domain/` es puro (sin React, Dexie ni APIs del navegador). Todo cambio de fórmula:
   test primero + actualizar `docs/calculos.md`.
-- Invariante: `gananciaTotal = saldoActual − capitalAportadoNeto` (sin flujos pendientes). Debe tener test.
+- Invariante: `gananciaTotal = saldoActual − capitalAportadoNeto` (siempre). Debe tener test.
 - Aportaciones/retiros nunca cuentan como ganancia/pérdida.
 
 ## Datos, migraciones y respaldos

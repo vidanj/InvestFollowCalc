@@ -26,7 +26,9 @@ Plan completo y fases: [docs/plan.md](docs/plan.md).
 - Nunca sumar montos de monedas distintas. Toda cantidad lleva su `Currency`.
 - `src/domain/` es puro (sin React, Dexie ni APIs del navegador). Todo cambio de fórmula:
   test primero + actualizar `docs/calculos.md`.
-- Invariante: `gananciaTotal = saldoActual − capitalAportadoNeto` (sin flujos pendientes). Debe tener test.
+- Invariante: `gananciaTotal = saldoActual − capitalAportadoNeto` (siempre, también con flujos
+  pendientes). Verificada con fast-check en `src/domain/__tests__/invariants.test.ts`.
+- Cobertura mínima de `src/domain/`: 95% (umbral en `vite.config.ts`; `npm run test:coverage`).
 - Aportaciones/retiros nunca cuentan como ganancia/pérdida.
 
 ## Datos, migraciones y respaldos
