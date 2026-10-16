@@ -44,6 +44,16 @@ Plan completo y fases: [docs/plan.md](docs/plan.md).
 - UI, README y `docs/`: español (es-MX). Textos de UI sólo desde `src/i18n/es-MX.ts`, nunca hardcodeados.
 - TypeScript strict, sin `any`. Componentes pequeños; lógica en `domain/` o hooks, no en JSX.
 - Mobile-first: verificar a 360 px y en escritorio. Accesibilidad básica (labels, contraste, foco).
+
+## Gráficas
+
+- Seguir la skill `dataviz`: colores sólo desde los tokens de `src/styles/index.css` (`--series-*`,
+  `--account-1..8`, `--chart-*`), con valores separados para claro y oscuro. Si cambia la paleta, correr el
+  validador de la skill contra las superficies de la app antes de usarla.
+- Nunca doble eje; leyenda con 2+ series; tooltip en todas; cada gráfica con su vista de tabla.
+- Ejes Y con `niceTicks` + `moneyTickFormatter`/`percentTickFormatter` (`src/components/charts/chartFormat.ts`).
+- Las gráficas se importan desde `LazyCharts.tsx` (Recharts va en un chunk aparte).
+- Revisar visualmente (captura a 360 px y escritorio, claro y oscuro) cualquier cambio de gráfica.
 - Formato con Prettier (`npm run format`); no discutir estilo que Prettier ya resuelve.
 
 ## Comandos
@@ -60,8 +70,8 @@ omisión), docs actualizadas si cambió comportamiento, y resumen al usuario. Si
 ## Estructura
 
 `src/domain` cálculo puro · `src/db` Dexie · `src/backup` cifrado/export/import ·
-`src/features` pantallas · `src/components` UI y gráficas · `src/i18n` textos · `src/test` setup de
-Vitest · `e2e/` Playwright · `docs/` plan y explicación de cálculos.
+`src/features` pantallas · `src/components` UI y gráficas · `src/i18n` textos · `src/theme` tema ·
+`src/test` setup y helpers de Vitest · `e2e/` Playwright · `docs/` plan y explicación de cálculos.
 
 ## Versiones fijadas a propósito
 

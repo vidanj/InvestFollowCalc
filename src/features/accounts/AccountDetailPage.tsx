@@ -1,18 +1,52 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router';
 import { ButtonLink } from '../../components/Button';
+import { BalanceChart, GainChart, PeriodChart } from '../../components/charts/LazyCharts';
 import { Notice } from '../../components/Notice';
 import { PageHeader } from '../../components/PageHeader';
+import { SegmentedControl } from '../../components/SegmentedControl';
 import { Stat } from '../../components/Stat';
 import { toneClass, toneOf } from '../../components/tone';
 import { useAccount, useAccountEvents } from '../../db/hooks';
 import type { EventRecord } from '../../db/schema';
+import { toIsoDate } from '../../domain/dates';
 import { formatMoney, formatPercent, formatSignedMoney } from '../../domain/money';
-import type { AccountSummary, Currency, Period } from '../../domain/types';
-import { formatDate, formatDuration, strings } from '../../i18n/es-MX';
+import {
+  buildSeries,
+  isInRange,
+  RANGES,
+  rangeStart,
+  rankPeriods,
+  type RangeKey,
+} from '../../domain/series';
+import type { AccountComputation, AccountSummary, Currency, Period } from '../../domain/types';
+import { formatDate, formatDuration, formatShortDate, strings } from '../../i18n/es-MX';
 import { computeSafely, readFlash } from './accountHelpers';
 
-function AccountStats({ summary, currency }: { summary: AccountSummary; currency: Currency }) {
+const rangeOptions = RANGES.map((value) => ({
+  value,
+  label: strings.charts.rangesShort[value],
+  ariaLabel: strings.charts.ranges[value],
+}));
+
+function periodDetail(period: Period, currency: Currency): string {
+  return strings.account.periodDetail(
+    formatSignedMoney(period.gain, currency),
+    formatShortDate(period.startDate),
+    formatShortDate(period.endDate),
+  );
+}
+
+function AccountStats({
+  summary,
+  periods,
+  currency,
+}: {
+  summary: AccountSummary;
+  periods: Period[];
+  currency: Currency;
+}) {
+  const ranked = rankPeriods(periods);
   return (
     <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       <Stat
@@ -49,6 +83,22 @@ function AccountStats({ summary, currency }: { summary: AccountSummary; currency
         }
         tone={toneOf(summary.avgMonthlyGain)}
       />
+      {ranked && (
+        <>
+          <Stat
+            label={strings.account.bestPeriod}
+            value={formatPercent(ranked.best.returnRate)}
+            tone={toneOf(ranked.best.returnRate)}
+            detail={periodDetail(ranked.best, currency)}
+          />
+          <Stat
+            label={strings.account.worstPeriod}
+            value={formatPercent(ranked.worst.returnRate)}
+            tone={toneOf(ranked.worst.returnRate)}
+            detail={periodDetail(ranked.worst, currency)}
+          />
+        </>
+      )}
     </dl>
   );
 }
@@ -60,7 +110,10 @@ function PeriodList({ periods, currency }: { periods: Period[]; currency: Curren
     );
   }
   return (
-    <ol className="flex flex-col divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
+    <ol
+      aria-label={strings.account.periodsTitle}
+      className="flex flex-col divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900"
+    >
       {[...periods].reverse().map((period) => (
         <li key={period.endEventId} className="flex items-start justify-between gap-3 px-4 py-3">
           <div className="min-w-0 text-sm">
@@ -80,6 +133,47 @@ function PeriodList({ periods, currency }: { periods: Period[]; currency: Curren
         </li>
       ))}
     </ol>
+  );
+}
+
+/** Range filter row first; it scopes every chart and the breakdown below it. */
+function EvolutionSection({
+  events,
+  computation,
+  currency,
+}: {
+  events: EventRecord[];
+  computation: AccountComputation;
+  currency: Currency;
+}) {
+  const [range, setRange] = useState<RangeKey>('ALL');
+  const allPoints = useMemo(() => buildSeries(events), [events]);
+  const start = rangeStart(range, toIsoDate());
+  const points = allPoints.filter((p) => isInRange(p.date, start));
+  const periods = computation.periods.filter((p) => isInRange(p.endDate, start));
+
+  return (
+    <section className="flex flex-col gap-4" aria-labelledby="evolution-title">
+      <h3 id="evolution-title" className="font-semibold">
+        {strings.charts.evolutionTitle}
+      </h3>
+      <div className="flex flex-col gap-1">
+        <SegmentedControl
+          legend={strings.charts.rangeLabel}
+          name="range"
+          options={rangeOptions}
+          value={range}
+          onChange={setRange}
+        />
+        <p className="text-xs text-slate-600 dark:text-slate-400">{strings.charts.rangeHint}</p>
+      </div>
+      <BalanceChart points={points} currency={currency} />
+      <GainChart points={points} currency={currency} />
+      <PeriodChart periods={periods} currency={currency} mode="amount" />
+      <PeriodChart periods={periods} currency={currency} mode="rate" />
+      <h4 className="text-sm font-semibold">{strings.account.periodsTitle}</h4>
+      <PeriodList periods={periods} currency={currency} />
+    </section>
   );
 }
 
@@ -139,13 +233,7 @@ export function AccountDetailPage() {
   const flash = readFlash(location.state);
 
   if (account === undefined || events === undefined) return <p>{strings.common.loading}</p>;
-  if (account === null) {
-    return (
-      <>
-        <PageHeader title={strings.account.notFound} backTo="/" />
-      </>
-    );
-  }
+  if (account === null) return <PageHeader title={strings.account.notFound} backTo="/" />;
 
   return (
     <>
@@ -164,7 +252,7 @@ export function AccountDetailPage() {
         </p>
       </PageHeader>
 
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-8">
         {flash && (
           <Notice tone="success">
             {flash.map((line) => (
@@ -176,25 +264,29 @@ export function AccountDetailPage() {
         {!computation?.summary ? (
           <Notice tone="error">{strings.account.corrupted}</Notice>
         ) : (
-          <>
+          <div className="flex flex-col gap-4">
             {computation.summary.hasPendingFlows && (
               <Notice tone="warning">{strings.account.estimatedBalance}</Notice>
             )}
-            <AccountStats summary={computation.summary} currency={account.currency} />
-          </>
+            <AccountStats
+              summary={computation.summary}
+              periods={computation.periods}
+              currency={account.currency}
+            />
+            <ButtonLink to={`/accounts/${account.id}/movements/new`}>
+              {strings.account.registerMovement}
+            </ButtonLink>
+          </div>
         )}
 
-        <ButtonLink to={`/accounts/${account.id}/movements/new`}>
-          {strings.account.registerMovement}
-        </ButtonLink>
+        {computation?.summary && (
+          <EvolutionSection events={events} computation={computation} currency={account.currency} />
+        )}
 
-        <section className="flex flex-col gap-3">
-          <h3 className="font-semibold">{strings.account.periodsTitle}</h3>
-          <PeriodList periods={computation?.periods ?? []} currency={account.currency} />
-        </section>
-
-        <section className="flex flex-col gap-3">
-          <h3 className="font-semibold">{strings.account.movementsTitle}</h3>
+        <section className="flex flex-col gap-3" aria-labelledby="movements-title">
+          <h3 id="movements-title" className="font-semibold">
+            {strings.account.movementsTitle}
+          </h3>
           <MovementList accountId={account.id} events={events} currency={account.currency} />
         </section>
       </div>

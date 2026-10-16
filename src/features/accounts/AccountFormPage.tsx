@@ -16,7 +16,7 @@ import { parseAmountToCents } from '../../domain/money';
 import { CURRENCIES, type Currency } from '../../domain/types';
 import { strings } from '../../i18n/es-MX';
 import { errorMessages } from '../errors';
-import { ACCOUNT_COLORS, suggestColor } from './accountHelpers';
+import { ACCOUNT_COLORS, accountColorVar, suggestColor } from './accountHelpers';
 
 interface FieldErrors {
   name?: string;
@@ -35,7 +35,7 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (color: str
           <label
             key={color}
             className="relative h-9 w-9 cursor-pointer rounded-full has-checked:ring-2 has-checked:ring-slate-900 has-checked:ring-offset-2 has-focus-visible:outline-2 has-focus-visible:outline-teal-600 dark:has-checked:ring-slate-100 dark:ring-offset-slate-950"
-            style={{ backgroundColor: color }}
+            style={{ backgroundColor: accountColorVar(color) }}
           >
             <input
               type="radio"

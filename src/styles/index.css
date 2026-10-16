@@ -1,8 +1,45 @@
 @import 'tailwindcss';
 
+/*
+ * Theme: without data-theme the OS preference decides; data-theme="light" | "dark" on <html>
+ * (set from Ajustes) overrides it both ways. See src/theme/theme.ts and public/theme-init.js.
+ */
+@custom-variant dark {
+  &:where([data-theme='dark'], [data-theme='dark'] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme='light']), :root:not([data-theme='light']) *) {
+      @slot;
+    }
+  }
+}
+
+/*
+ * Chart tokens. Categorical slots are the validated dataviz reference palette (light and dark
+ * steps), checked against this app's surfaces (white / slate-900). Gains and losses use the
+ * diverging blue ↔ red pair. Chrome is slate, one step off the surface.
+ */
 :root {
-  /* Native controls (date picker, scrollbars) follow the light/dark theme. */
-  color-scheme: light dark;
+  color-scheme: light;
+  --chart-grid: #e2e8f0;
+  --chart-axis: #cbd5e1;
+  --chart-ink-muted: #64748b;
+  --chart-surface: #ffffff;
+  --chart-hover: rgb(15 23 42 / 0.05);
+  --series-balance: #2a78d6;
+  --series-capital: #64748b;
+  --series-gain: #2a78d6;
+  --series-loss: #e34948;
+  --account-1: #2a78d6;
+  --account-2: #eb6834;
+  --account-3: #1baf7a;
+  --account-4: #eda100;
+  --account-5: #e87ba4;
+  --account-6: #008300;
+  --account-7: #6250d6;
+  --account-8: #e34948;
+
   font-family:
     system-ui,
     -apple-system,
@@ -12,4 +49,62 @@
     Arial,
     sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme='light'])) {
+    color-scheme: dark;
+    --chart-grid: #1e293b;
+    --chart-axis: #334155;
+    --chart-ink-muted: #94a3b8;
+    --chart-surface: #0f172a;
+    --chart-hover: rgb(248 250 252 / 0.06);
+    --series-balance: #3987e5;
+    --series-capital: #94a3b8;
+    --series-gain: #3987e5;
+    --series-loss: #e66767;
+    --account-1: #3987e5;
+    --account-2: #d95926;
+    --account-3: #199e70;
+    --account-4: #c98500;
+    --account-5: #d55181;
+    --account-6: #008300;
+    --account-7: #9085e9;
+    --account-8: #e66767;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --chart-grid: #1e293b;
+  --chart-axis: #334155;
+  --chart-ink-muted: #94a3b8;
+  --chart-surface: #0f172a;
+  --chart-hover: rgb(248 250 252 / 0.06);
+  --series-balance: #3987e5;
+  --series-capital: #94a3b8;
+  --series-gain: #3987e5;
+  --series-loss: #e66767;
+  --account-1: #3987e5;
+  --account-2: #d95926;
+  --account-3: #199e70;
+  --account-4: #c98500;
+  --account-5: #d55181;
+  --account-6: #008300;
+  --account-7: #9085e9;
+  --account-8: #e66767;
+}
+
+body {
+  background-color: #f8fafc;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme='light'])) body {
+    background-color: #020617;
+  }
+}
+
+:root[data-theme='dark'] body {
+  background-color: #020617;
 }

@@ -34,5 +34,9 @@ export default defineConfig([
     extends: [js.configs.recommended],
     languageOptions: { globals: globals.node },
   },
+  {
+    files: ['public/**/*.js'],
+    languageOptions: { sourceType: 'script', globals: globals.browser },
+  },
   prettier,
 ]);

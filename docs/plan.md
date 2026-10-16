@@ -219,6 +219,15 @@ Se reportaron al usuario al cerrar cada fase; cualquiera puede revertirse si no 
   - Una cuenta archivada se oculta de la lista principal en una sección "Archivadas"; sigue abriéndose y editándose.
   - Rutas en inglés (`#/accounts/:id`); son identificadores, no texto de UI.
   - zod se pospone a la fase 4 (respaldos): los formularios validan con las funciones del dominio.
+- **Fase 3:**
+  - Colores de cuenta = los 8 colores categóricos de la paleta validada (dataviz), con su variante para modo oscuro. Validados contra las superficies reales de la app (blanco / slate-900). En modo claro, 3 colores quedan bajo 3:1, así que el color siempre va junto al nombre de la cuenta y cada gráfica tiene vista de tabla.
+  - Ganancias y pérdidas en las barras usan la pareja divergente azul ↔ rojo. Ninguna gráfica tiene doble eje.
+  - "% por periodo" es su propia gráfica, separada de "Ganancia por periodo" (mismo eje no es posible). En total, 4 gráficas en el detalle.
+  - El filtro de rango (1M/3M/6M/1A/Todo) va arriba de la sección "Evolución" y aplica a sus 4 gráficas y al desglose. Los indicadores de arriba siempre son totales.
+  - El portafolio es la pantalla de inicio: un bloque por moneda con indicadores, gráfica de saldo contra capital y sus cuentas activas.
+  - El tema (Sistema/Claro/Oscuro) se guarda en `localStorage` de este dispositivo; no viaja en los respaldos.
+  - Ajustes en esta fase: tema, estado del almacenamiento, privacidad y versión. "Borrar todos los datos" pasa a la fase 4, junto con los respaldos.
+  - Las gráficas se cargan aparte (lazy): la carga inicial pasó de 242 a 129 KB comprimidos.
 
 ---
 

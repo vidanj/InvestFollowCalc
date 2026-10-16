@@ -21,6 +21,8 @@ export interface PortfolioInput {
 export interface CurrencyPortfolio {
   currency: Currency;
   accountIds: string[];
+  /** Synthetic merged timeline (see `buildPortfolioTimeline`), e.g. for charting. */
+  timeline: AccountEvent[];
   computation: AccountComputation;
 }
 
@@ -145,6 +147,7 @@ export function computePortfolio(inputs: readonly PortfolioInput[]): CurrencyPor
       {
         currency,
         accountIds: members.map((m) => m.account.id),
+        timeline,
         computation: computeAccount(timeline),
       },
     ];

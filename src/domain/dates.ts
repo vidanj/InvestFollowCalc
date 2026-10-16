@@ -50,3 +50,16 @@ export function addDays(date: IsoDate, days: number): IsoDate {
   const [year, month, day] = p;
   return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
 }
+
+/** `date` moved by whole months; the day is clamped to the target month (Mar 31 − 1 → Feb 28). */
+export function addMonths(date: IsoDate, months: number): IsoDate {
+  const p = parts(date);
+  if (!p) throw new RangeError(`Invalid ISO date: ${date}`);
+  const [year, month, day] = p;
+  const target = new Date(Date.UTC(year, month - 1 + months, 1));
+  const lastDay = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target.toISOString().slice(0, 10);
+}

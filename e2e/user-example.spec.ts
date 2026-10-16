@@ -13,7 +13,7 @@ async function expectExampleTotals(page: Page) {
   await expect(stat(page, 'Ganancia total')).toContainText('+$50.00');
   await expect(stat(page, 'Capital aportado')).toContainText('$10,500.00');
   await expect(stat(page, 'Saldo actual')).toContainText('$10,550.00');
-  await expect(page.getByText('+$49.00')).toBeVisible();
+  await expect(page.getByText('+$49.00', { exact: true })).toBeVisible();
 }
 
 test('registers the user example from the UI and keeps it after reloading', async ({ page }) => {

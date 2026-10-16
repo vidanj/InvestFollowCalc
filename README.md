@@ -8,7 +8,7 @@ calcula la ganancia en dinero, el porcentaje y el tiempo en que se generó, con 
 - Tus datos se guardan **solo en tu dispositivo**. No hay nube ni servidor.
 - Respaldos cifrados con contraseña para pasar tus datos a otro teléfono o PC.
 
-> Estado: en desarrollo (fase 2: cuentas y movimientos guardados en el dispositivo). Ver
+> Estado: en desarrollo (fase 3: portafolio, gráficas y modo oscuro). Ver
 > [docs/plan.md](docs/plan.md) y [docs/calculos.md](docs/calculos.md).
 
 ## Desarrollo

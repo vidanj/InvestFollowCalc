@@ -1,7 +1,9 @@
 import type { RepositoryErrorCode } from '../db/repository';
+import type { RangeKey } from '../domain/series';
 import type { Currency, IsoDate } from '../domain/types';
 import { DAYS_PER_MONTH } from '../domain/types';
 import type { ValidationIssueCode } from '../domain/validation';
+import type { ThemePreference } from '../theme/theme';
 
 // All user-facing text lives here. Components must not hardcode UI strings.
 
@@ -13,6 +15,18 @@ const shortDate = new Intl.DateTimeFormat(LOCALE, {
   year: 'numeric',
   timeZone: 'UTC',
 });
+
+const dayMonth = new Intl.DateTimeFormat(LOCALE, {
+  day: 'numeric',
+  month: 'short',
+  timeZone: 'UTC',
+});
+
+/** "1 oct" (for chart axes). */
+export function formatShortDate(date: IsoDate): string {
+  const [y, m, d] = date.split('-').map(Number) as [number, number, number];
+  return dayMonth.format(new Date(Date.UTC(y, m - 1, d)));
+}
 
 /** "1 oct 2026". */
 export function formatDate(date: IsoDate): string {
@@ -54,6 +68,20 @@ const repositoryMessages: Record<RepositoryErrorCode, string> = {
     'El saldo inicial no se puede eliminar. Si ya no quieres la cuenta, elimínala completa.',
 };
 
+const rangeLabels: Record<RangeKey, string> = {
+  '1M': '1 mes',
+  '3M': '3 meses',
+  '6M': '6 meses',
+  '1Y': '1 año',
+  ALL: 'Todo',
+};
+
+const themeLabels: Record<ThemePreference, string> = {
+  system: 'Sistema',
+  light: 'Claro',
+  dark: 'Oscuro',
+};
+
 const currencyNames: Record<Currency, string> = {
   USD: 'Dólares (USD)',
   MXN: 'Pesos mexicanos (MXN)',
@@ -75,6 +103,65 @@ export const strings = {
     optional: 'opcional',
   },
   currencyNames,
+  nav: {
+    label: 'Navegación principal',
+    portfolio: 'Portafolio',
+    settings: 'Ajustes',
+  },
+  portfolio: {
+    title: 'Portafolio',
+    totalBalance: 'Saldo total',
+    accountsTitle: 'Cuentas',
+    allArchived: 'Todas tus cuentas están archivadas. Desarchiva una para verla en los totales.',
+    archivedNote: 'Las cuentas archivadas no cuentan en los totales del portafolio.',
+  },
+  charts: {
+    evolutionTitle: 'Evolución',
+    rangeLabel: 'Rango de fechas',
+    ranges: rangeLabels,
+    rangesShort: { '1M': '1M', '3M': '3M', '6M': '6M', '1Y': '1A', ALL: 'Todo' } satisfies Record<
+      RangeKey,
+      string
+    >,
+    thousandsSuffix: ' k',
+    millionsSuffix: ' M',
+    rangeHint: 'El rango aplica a las gráficas y al desglose de abajo.',
+    notEnoughData: 'Aún no hay suficientes datos en este rango para graficar.',
+    balanceTitle: 'Saldo y capital aportado',
+    balanceSubtitle: 'La distancia entre las dos líneas es lo que ha generado.',
+    balance: 'Saldo',
+    capital: 'Capital aportado',
+    gainTitle: 'Ganancia acumulada',
+    gainSubtitle: 'Lo generado desde el saldo inicial, sin contar aportaciones ni retiros.',
+    gain: 'Ganancia',
+    periodGainTitle: 'Ganancia por periodo',
+    periodRateTitle: 'Rendimiento por periodo',
+    periodRate: 'Rendimiento',
+    periodsTableNote: 'Los valores de cada periodo están en el desglose de abajo.',
+    showData: 'Ver datos en tabla',
+    date: 'Fecha',
+    estimated: '(estimado)',
+    periodLabel: (from: string, to: string, duration: string) => `${from} → ${to} · ${duration}`,
+  },
+  settings: {
+    title: 'Ajustes',
+    theme: 'Tema',
+    themes: themeLabels,
+    storageTitle: 'Almacenamiento',
+    storagePersisted: 'Persistente: el navegador no borrará tus datos para liberar espacio.',
+    storageNotPersisted:
+      'No persistente: el navegador podría borrar tus datos si le falta espacio. Instala la app y haz respaldos.',
+    storageUnknown: 'Este navegador no informa si el almacenamiento es persistente.',
+    requestPersist: 'Pedir almacenamiento persistente',
+    privacyTitle: 'Privacidad',
+    privacyBody: [
+      'Tus cuentas y movimientos se guardan solo en este dispositivo, dentro del navegador.',
+      'La app no usa servidores, analíticas ni servicios de terceros: nada de lo que registras sale de aquí.',
+      'Para pasar tus datos a otro dispositivo usa los respaldos cifrados.',
+    ],
+    aboutTitle: 'Acerca de',
+    version: (version: string) => `Versión ${version}`,
+  },
   accounts: {
     title: 'Tus cuentas',
     new: 'Nueva cuenta',
@@ -112,6 +199,9 @@ export const strings = {
     annualized: 'Rendimiento anualizado (TWR)',
     elapsed: 'Tiempo medido',
     avgMonthly: 'Promedio mensual',
+    bestPeriod: 'Mejor periodo',
+    worstPeriod: 'Peor periodo',
+    periodDetail: (money: string, from: string, to: string) => `${money} · ${from} → ${to}`,
     estimatedBalance:
       'Saldo estimado: registraste movimientos después de tu último saldo. Actualiza el saldo para calcular su ganancia.',
     shortPeriod: 'Estimado: periodo corto (menos de 30 días).',
