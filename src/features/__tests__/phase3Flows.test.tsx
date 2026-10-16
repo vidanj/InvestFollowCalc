@@ -166,3 +166,11 @@ describe('settings', () => {
     expect(portfolio[0]).not.toHaveAttribute('aria-current');
   });
 });
+
+describe('install card', () => {
+  it('explains how to install when the browser offers no button', async () => {
+    renderRoute('/settings');
+    expect(await screen.findByText(strings.settings.installWhy)).toBeVisible();
+    expect(screen.getByText(strings.settings.installOther)).toBeVisible();
+  });
+});

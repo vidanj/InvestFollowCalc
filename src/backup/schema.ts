@@ -2,6 +2,10 @@ import { z } from 'zod';
 import { CURRENCIES } from '../domain/types';
 import { MAX_ITERATIONS } from './crypto';
 
+// No eval: zod would otherwise probe `new Function`, which the strict CSP (script-src 'self')
+// blocks and reports as a violation. Interpreted parsing is plenty fast for backup-sized data.
+z.config({ jitless: true });
+
 export const BACKUP_FORMAT = 'investfollowcalc-backup';
 /** Envelope/encryption format. Bump when crypto parameters or the envelope shape change. */
 export const BACKUP_FORMAT_VERSION = 1;

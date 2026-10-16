@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link, Outlet, useLocation } from 'react-router';
 import { strings } from '../i18n/es-MX';
+import { UpdatePrompt } from '../pwa/UpdatePrompt';
 
 function ChartIcon() {
   return (
@@ -120,6 +121,7 @@ export function Layout() {
           <NavItems layout="side" />
         </nav>
         <main className="w-full min-w-0 flex-1 px-4 py-6 md:max-w-3xl">
+          <UpdatePrompt />
           <Outlet />
         </main>
       </div>

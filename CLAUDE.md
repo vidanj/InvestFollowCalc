@@ -16,7 +16,9 @@ Plan completo y fases: [docs/plan.md](docs/plan.md).
    **Ramas:** una rama por fase (`chore/phase-0-scaffold`, `feat/phase-1-engine`, …). Nunca commitear
    directo en `main`; integrar a `main` (merge o PR) sólo cuando el usuario lo ordene.
 3. **Privacidad absoluta.** Ningún dato del usuario sale del dispositivo. Prohibido: llamadas de red a
-   terceros, analytics, telemetría, CDNs, fuentes externas, logs con montos. No relajar la CSP.
+   terceros, analytics, telemetría, CDNs, fuentes externas, logs con montos. No relajar la CSP
+   (`vite.config.ts`): nada de scripts o `<style>` en línea ni `eval`/`new Function` (zod va en
+   `jitless`). `e2e/pwa.spec.ts` verifica cero violaciones de CSP y cero peticiones a otros orígenes.
 4. **Dependencias nuevas requieren aprobación** del usuario (explicar para qué y su peso). Versiones
    exactas (`npm install --save-exact`).
 
@@ -63,6 +65,13 @@ Plan completo y fases: [docs/plan.md](docs/plan.md).
 - `npm run dev` · `npm run build` · `npm run preview`
 - `npm run lint` · `npm run typecheck` · `npm run format` · `npm run format:check`
 - `npm test` (Vitest) · `npm run test:coverage` · `npm run test:e2e` (Playwright, usa el build de producción)
+- `npm run icons` regenera los íconos PWA de `public/icons/` (cambiar el diseño en `scripts/generate-icons.mjs`).
+
+## PWA
+
+- Service worker con precarga completa (funciona sin conexión) y actualización con aviso al usuario.
+- El módulo `virtual:pwa-register/react` sólo existe en el build; en Vitest apunta a `src/test/pwaRegisterStub.ts`.
+- Avisos y banners van en el flujo de la página, nunca flotando sobre botones o formularios.
 
 ## Definición de "terminado"
 

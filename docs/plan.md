@@ -237,6 +237,14 @@ Se reportaron al usuario al cerrar cada fase; cualquiera puede revertirse si no 
   - "Borrar todos los datos" (en Ajustes) pide escribir BORRAR y sugiere respaldar antes.
   - Nueva sección "Respaldo" en la navegación (Portafolio · Respaldo · Ajustes).
   - Formato documentado en `docs/respaldo.md`.
+- **Fase 5:**
+  - CSP más estricta que la planeada: `style-src 'self'` (sin `'unsafe-inline'`); se aplica sólo al build de producción (el servidor de desarrollo necesita scripts en línea).
+  - zod en modo `jitless`: su detección de `eval` violaba la CSP (encontrado por las pruebas e2e).
+  - El aviso de "nueva versión" / "funciona sin conexión" va dentro de la página, no flotando: flotando tapaba el botón "Crear cuenta" (encontrado por las pruebas e2e).
+  - Actualización con aviso (`registerType: 'prompt'`): una versión nueva nunca recarga sola.
+  - Tarjeta "Instalar la app" en Ajustes: botón donde el navegador lo ofrece, instrucciones en iPhone/iPad y en el resto.
+  - Íconos generados con `npm run icons` (Chromium de Playwright, sin dependencias nuevas).
+  - La pantalla de Respaldo se carga aparte: la carga inicial sigue en ~131 KB comprimidos.
 
 ---
 

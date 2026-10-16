@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { trackCspViolations } from './csp';
 
 const PASSWORD = 'mi contraseña segura';
 
@@ -20,6 +21,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('moves data to a "new device" through an encrypted backup', async ({ page }, testInfo) => {
+  const cspViolations = await trackCspViolations(page);
   await page.goto('./');
   await page.getByRole('link', { name: 'Nueva cuenta' }).click();
   await page.getByLabel('Nombre').fill('Ahorro');
@@ -68,4 +70,7 @@ test('moves data to a "new device" through an encrypted backup', async ({ page }
   const card = page.getByRole('link', { name: /Ahorro/ });
   await expect(card).toContainText('$10,001.00');
   await expect(card).toContainText('+$1.00');
+
+  // Encrypting, decrypting and validating ran under the strict CSP without violations.
+  expect(cspViolations).toEqual([]);
 });

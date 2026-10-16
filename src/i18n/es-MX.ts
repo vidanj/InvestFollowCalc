@@ -208,8 +208,23 @@ export const strings = {
     estimated: '(estimado)',
     periodLabel: (from: string, to: string, duration: string) => `${from} → ${to} · ${duration}`,
   },
+  pwa: {
+    updateAvailable: 'Hay una nueva versión de la app.',
+    reload: 'Actualizar ahora',
+    later: 'Después',
+    offlineReady: 'La app ya funciona sin conexión.',
+    dismiss: 'Entendido',
+  },
   settings: {
     title: 'Ajustes',
+    installTitle: 'Instalar la app',
+    installWhy:
+      'Instalada, abre como una aplicación, funciona sin conexión y el navegador protege mejor tus datos.',
+    installButton: 'Instalar',
+    installed: 'Ya estás usando la app instalada.',
+    installIos: 'En iPhone o iPad: toca Compartir y luego "Agregar a inicio".',
+    installOther:
+      'Usa el menú del navegador y elige "Instalar app" o "Agregar a la pantalla de inicio".',
     theme: 'Tema',
     themes: themeLabels,
     storageTitle: 'Almacenamiento',

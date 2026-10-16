@@ -7,6 +7,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { requestPersistentStorage } from '../../db/persistence';
 import { strings } from '../../i18n/es-MX';
+import { isIos, isStandalone, promptInstall, useCanInstall } from '../../pwa/install';
 import {
   readThemePreference,
   saveThemePreference,
@@ -36,6 +37,32 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
       <h3 className="font-semibold">{title}</h3>
       {children}
     </section>
+  );
+}
+
+function InstallCard() {
+  const canInstall = useCanInstall();
+  const t = strings.settings;
+
+  let body;
+  if (isStandalone()) body = <p className="text-sm">{t.installed}</p>;
+  else if (canInstall) {
+    body = (
+      <Button
+        onClick={() => {
+          void promptInstall();
+        }}
+      >
+        {t.installButton}
+      </Button>
+    );
+  } else body = <p className="text-sm">{isIos() ? t.installIos : t.installOther}</p>;
+
+  return (
+    <Card title={t.installTitle}>
+      <p className="text-sm text-slate-600 dark:text-slate-400">{t.installWhy}</p>
+      {body}
+    </Card>
   );
 }
 
@@ -139,6 +166,8 @@ export function SettingsPage() {
             }}
           />
         </Card>
+
+        <InstallCard />
 
         <Card title={strings.settings.storageTitle}>
           <p className="text-sm">{storageText}</p>
