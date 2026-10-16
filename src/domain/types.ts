@@ -39,6 +39,11 @@ export interface FlowEvent extends EventBase {
 
 export type AccountEvent = BalanceEvent | FlowEvent;
 
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+/** An event as the user describes it, before it gets an id and a capture order. */
+export type EventDraft = DistributiveOmit<AccountEvent, 'id' | 'seq'>;
+
 /** A stretch of time between two consecutive known balances. */
 export interface Period {
   startDate: IsoDate;

@@ -4,6 +4,9 @@ import type { AccountEvent } from './types';
 
 export type ValidationIssueCode =
   | 'FIRST_EVENT_NOT_BALANCE'
+  | 'BEFORE_INITIAL_BALANCE'
+  | 'INITIAL_MUST_BE_FIRST'
+  | 'INITIAL_MUST_BE_BALANCE'
   | 'INVALID_DATE'
   | 'INVALID_SEQ'
   | 'INVALID_BALANCE'
@@ -75,4 +78,39 @@ export function validateTimeline(events: readonly AccountEvent[]): ValidationIss
   }
 
   return issues;
+}
+
+/**
+ * Validates adding `candidate` to an account, or replacing the event with the same id. Besides the
+ * timeline rules, the initial balance must stay a balance and stay the earliest event, and no
+ * other event may be dated before it.
+ */
+export function validateCandidate(
+  events: readonly AccountEvent[],
+  candidate: AccountEvent,
+): ValidationIssue[] {
+  const initial = sortEvents(events)[0];
+  const next = [...events.filter((e) => e.id !== candidate.id), candidate];
+  const timelineIssues = validateTimeline(next);
+  if (!initial) return timelineIssues;
+
+  const structural: ValidationIssue[] = [];
+  if (candidate.id === initial.id) {
+    if (candidate.type !== 'balance') {
+      structural.push({ code: 'INITIAL_MUST_BE_BALANCE', eventId: candidate.id });
+    } else if (sortEvents(next)[0]?.id !== candidate.id) {
+      structural.push({ code: 'INITIAL_MUST_BE_FIRST', eventId: candidate.id });
+    }
+  } else if (compareIsoDates(candidate.date, initial.date) < 0) {
+    structural.push({ code: 'BEFORE_INITIAL_BALANCE', eventId: candidate.id });
+  }
+
+  if (structural.length === 0) return timelineIssues;
+  // The structural issue already explains why the timeline would not start with a balance.
+  return [...structural, ...timelineIssues.filter((i) => i.code !== 'FIRST_EVENT_NOT_BALANCE')];
+}
+
+/** Capture order for a new event: after every existing event of the account. */
+export function nextSeq(events: readonly AccountEvent[]): number {
+  return events.reduce((max, e) => Math.max(max, e.seq), 0) + 1;
 }

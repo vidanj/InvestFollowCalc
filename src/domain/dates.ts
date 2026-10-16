@@ -36,3 +36,17 @@ export function compareIsoDates(a: IsoDate, b: IsoDate): number {
   // ISO dates sort lexicographically.
   return a < b ? -1 : a > b ? 1 : 0;
 }
+
+/** Local calendar date of `date` (defaults to now) as `YYYY-MM-DD`. */
+export function toIsoDate(date: Date = new Date()): IsoDate {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** `date` moved by `days` calendar days (negative goes back). */
+export function addDays(date: IsoDate, days: number): IsoDate {
+  const p = parts(date);
+  if (!p) throw new RangeError(`Invalid ISO date: ${date}`);
+  const [year, month, day] = p;
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}

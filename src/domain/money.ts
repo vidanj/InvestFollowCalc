@@ -49,3 +49,19 @@ export function formatPercent(rate: number | null, fractionDigits = 2): string {
     signDisplay: 'exceptZero',
   }).format(rate);
 }
+
+/** Like {@link formatMoney} but always shows the sign of non-zero amounts: "+$1.00", "-$50.00". */
+export function formatSignedMoney(cents: Cents, currency: Currency): string {
+  const formatted = formatMoney(cents, currency);
+  return cents > 0 ? `+${formatted}` : formatted;
+}
+
+const inputFormatter = new Intl.NumberFormat(LOCALE, {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/** Cents as an editable amount ("10,000.50"); round-trips through {@link parseAmountToCents}. */
+export function formatAmountInput(cents: Cents): string {
+  return inputFormatter.format(cents / 100);
+}

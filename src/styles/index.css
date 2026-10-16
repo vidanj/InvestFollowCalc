@@ -1,6 +1,8 @@
 @import 'tailwindcss';
 
 :root {
+  /* Native controls (date picker, scrollbars) follow the light/dark theme. */
+  color-scheme: light dark;
   font-family:
     system-ui,
     -apple-system,

@@ -108,7 +108,8 @@ type AccountEvent =
 - `% simple = gananciaTotal / capitalAportadoNeto` (dato principal; "—" si el capital es ≤ 0).
 - `TWR = Π(1 + r_i) − 1` y `TWR anualizado = (1 + TWR)^(365/días) − 1`. Si hay menos de 30 días, se etiqueta como "estimado, periodo corto".
 - Tiempo transcurrido (días / semanas / meses) y ganancia promedio por día y por mes.
-- Mejor y peor periodo: **pendiente de decidir** si se ordenan por monto o por porcentaje; se implementa en la fase 3.
+- Mejor y peor periodo: se ordenan **por porcentaje** del periodo y se muestra también el monto (decidido el 2026-10-16; se implementa en la fase 3).
+- Las cuentas **archivadas no cuentan** en los totales del portafolio (decidido el 2026-10-16).
 
 **Portafolio (`portfolio.ts`):** agrega las cuentas **por moneda**. Nunca suma USD con MXN. Para el TWR del portafolio se encadenan los periodos combinando la línea de tiempo de las cuentas de esa moneda.
 
@@ -203,6 +204,21 @@ Cada fase termina con lint, typecheck y tests en verde y con un resumen de los c
 | **Futuro** (fuera del MVP)    | Combinar al importar, vista consolidada con tipo de cambio manual, exportación CSV, XIRR, metas y proyecciones, UI en inglés, Tauri / Capacitor                                                                                | —                                                                                           |
 
 **Prerrequisito de git (resuelto el 2026-10-16):** git fallaba con "dubious ownership" porque la carpeta pertenece a `BUILTIN/Administradores`. El usuario agregó la carpeta a `safe.directory` en su configuración global de git.
+
+**Flujo de ramas (decidido el 2026-10-16):** una rama por fase; se integra a `main` sólo con orden explícita.
+
+### Decisiones tomadas durante la implementación
+
+Se reportaron al usuario al cerrar cada fase; cualquiera puede revertirse si no convence.
+
+- **Fase 1:** porcentajes en "—" hasta tener un periodo medido; peso 0.5 para aportaciones en periodos de 0 días; promedio mensual = diario × 365/12; en el portafolio, una cuenta sin actualizar conserva su último saldo; fechas con utilidades propias (sin date-fns por ahora).
+- **Fase 2:**
+  - No se aceptan fechas futuras (validación en los formularios).
+  - La moneda de una cuenta se puede cambiar después de crearla; los montos no se convierten.
+  - El saldo inicial no se puede borrar (sólo eliminando la cuenta), no puede volverse aportación/retiro y debe seguir siendo el movimiento más antiguo.
+  - Una cuenta archivada se oculta de la lista principal en una sección "Archivadas"; sigue abriéndose y editándose.
+  - Rutas en inglés (`#/accounts/:id`); son identificadores, no texto de UI.
+  - zod se pospone a la fase 4 (respaldos): los formularios validan con las funciones del dominio.
 
 ---
 

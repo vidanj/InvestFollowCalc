@@ -1,4 +1,5 @@
 import type { Account, BalanceEvent, Currency, FlowEvent, IsoDate } from '../types';
+export { addDays } from '../dates';
 
 // Test helpers: amounts are written in whole currency units (pesos/dollars) and stored as cents.
 
@@ -6,11 +7,6 @@ let counter = 0;
 const next = (): number => ++counter;
 
 export const cents = (units: number): number => Math.round(units * 100);
-
-export function addDays(date: IsoDate, days: number): IsoDate {
-  const [y, m, d] = date.split('-').map(Number) as [number, number, number];
-  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
-}
 
 /** Events get an increasing `seq`, so same-day events keep the order they were built in. */
 export function balance(date: IsoDate, units: number): BalanceEvent {

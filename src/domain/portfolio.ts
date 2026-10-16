@@ -8,6 +8,7 @@ import {
   type BalanceEvent,
   type Cents,
   type Currency,
+  type EventDraft,
   type IsoDate,
 } from './types';
 import { DomainValidationError, sortEvents, validateTimeline } from './validation';
@@ -28,8 +29,6 @@ interface TaggedEvent {
   event: AccountEvent;
   isInitial: boolean;
 }
-
-type EventDraft<T> = T extends AccountEvent ? Omit<T, 'id' | 'seq'> : never;
 
 function groupByDate(items: readonly TaggedEvent[]): Map<IsoDate, TaggedEvent[]> {
   const groups = new Map<IsoDate, TaggedEvent[]>();
@@ -80,7 +79,7 @@ export function buildPortfolioTimeline(
   const timeline: AccountEvent[] = [];
   let started = false;
 
-  const push = (draft: EventDraft<AccountEvent>): void => {
+  const push = (draft: EventDraft): void => {
     const seq = timeline.length;
     timeline.push({ ...draft, id: `portfolio-${seq}`, seq });
   };
