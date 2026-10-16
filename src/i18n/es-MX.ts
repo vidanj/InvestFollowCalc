@@ -1,3 +1,4 @@
+import type { BackupErrorCode } from '../backup/backup';
 import type { RepositoryErrorCode } from '../db/repository';
 import type { RangeKey } from '../domain/series';
 import type { Currency, IsoDate } from '../domain/types';
@@ -46,6 +47,19 @@ export function formatDuration(days: number): string {
   const months = days / DAYS_PER_MONTH;
   return `${days} días (${oneDecimal.format(months)} ${months === 1 ? 'mes' : 'meses'})`;
 }
+
+/** "1 cuenta", "3 cuentas". */
+export function countOf(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+const backupErrors: Record<BackupErrorCode, string> = {
+  NOT_A_BACKUP: 'Este archivo no es un respaldo de InvestFollowCalc.',
+  UNSUPPORTED_VERSION:
+    'Este respaldo es de una versión más reciente de la app. Actualiza la app para importarlo.',
+  WRONG_PASSWORD_OR_CORRUPT: 'Contraseña incorrecta o archivo dañado.',
+  INVALID_CONTENT: 'El respaldo está dañado o incompleto. No se modificó nada.',
+};
 
 const issueMessages: Record<ValidationIssueCode, string> = {
   FIRST_EVENT_NOT_BALANCE: 'El primer movimiento de una cuenta debe ser su saldo inicial.',
@@ -106,7 +120,58 @@ export const strings = {
   nav: {
     label: 'Navegación principal',
     portfolio: 'Portafolio',
+    backup: 'Respaldo',
     settings: 'Ajustes',
+  },
+  backup: {
+    title: 'Respaldo',
+    intro:
+      'Tus datos viven solo en este dispositivo. Un respaldo es un archivo cifrado con tu contraseña que puedes guardar donde quieras e importar en otro teléfono o computadora.',
+    lastBackup: (date: string) => `Último respaldo en este dispositivo: ${date}.`,
+    neverBackedUp: 'Aún no has creado ningún respaldo en este dispositivo.',
+    exportTitle: 'Crear respaldo',
+    password: 'Contraseña para este respaldo',
+    passwordHelp: (min: number) => `Mínimo ${min} caracteres. La necesitarás para importarlo.`,
+    confirmPassword: 'Repite la contraseña',
+    passwordWarning:
+      'Si olvidas la contraseña no hay forma de recuperar el respaldo. Guárdala en un lugar seguro.',
+    passwordTooShort: (min: number) => `La contraseña debe tener al menos ${min} caracteres.`,
+    passwordMismatch: 'Las contraseñas no coinciden.',
+    createButton: 'Crear y guardar respaldo',
+    encrypting: 'Cifrando…',
+    fileDescription: 'Respaldo de InvestFollowCalc',
+    saved: (fileName: string) => `Respaldo guardado: ${fileName}.`,
+    shared: (fileName: string) => `Respaldo listo para guardar: ${fileName}.`,
+    downloaded: (fileName: string) =>
+      `Respaldo descargado: ${fileName}. Muévelo a un lugar seguro (por ejemplo, tu nube personal o una memoria).`,
+    cancelled: 'No se guardó el respaldo.',
+    importTitle: 'Importar respaldo',
+    importIntro: 'Reemplaza los datos de este dispositivo con los de un respaldo.',
+    file: 'Archivo de respaldo (.json)',
+    fileRequired: 'Elige un archivo de respaldo.',
+    importPassword: 'Contraseña del respaldo a importar',
+    readButton: 'Leer respaldo',
+    reading: 'Descifrando…',
+    previewTitle: 'Contenido del respaldo',
+    previewSummary: (accounts: number, events: number, date: string) =>
+      `${countOf(accounts, 'cuenta', 'cuentas')} y ${countOf(events, 'movimiento', 'movimientos')}, creado el ${date}.`,
+    replaceWarning: (current: number) =>
+      current === 0
+        ? 'Este dispositivo no tiene datos: se cargarán los del respaldo.'
+        : current === 1
+          ? 'Se borrará la cuenta que hay ahora en este dispositivo y en su lugar quedarán las del respaldo.'
+          : `Se borrarán las ${current} cuentas que hay ahora en este dispositivo y en su lugar quedarán las del respaldo.`,
+    backupFirstHint: 'Si quieres conservar los datos actuales, crea primero un respaldo de ellos.',
+    replaceButton: 'Reemplazar mis datos con este respaldo',
+    replaceConfirmWarning: 'Los datos actuales de este dispositivo se perderán. ¿Continuar?',
+    imported: (accounts: number) =>
+      `Listo: se importaron ${countOf(accounts, 'cuenta', 'cuentas')}.`,
+    error: (code: BackupErrorCode) => backupErrors[code],
+    reminderNever:
+      'Aún no tienes un respaldo. Si pierdes o cambias este dispositivo, perderías tus datos.',
+    reminderStale: (days: number) =>
+      `Tu último respaldo tiene más de ${days} días y hubo cambios desde entonces.`,
+    reminderAction: 'Crear respaldo',
   },
   portfolio: {
     title: 'Portafolio',
@@ -159,6 +224,15 @@ export const strings = {
       'La app no usa servidores, analíticas ni servicios de terceros: nada de lo que registras sale de aquí.',
       'Para pasar tus datos a otro dispositivo usa los respaldos cifrados.',
     ],
+    dangerTitle: 'Borrar todos los datos',
+    dangerBody:
+      'Elimina todas las cuentas y movimientos de este dispositivo. No afecta a los respaldos que ya hayas guardado.',
+    dangerBackupHint: 'Antes de borrar, crea un respaldo si quieres conservar tus datos.',
+    deleteAll: 'Borrar todos los datos',
+    confirmWord: 'BORRAR',
+    confirmPrompt: 'Escribe BORRAR para confirmar',
+    confirmDeleteAll: 'Borrar definitivamente',
+    deleted: 'Se borraron todos los datos de este dispositivo.',
     aboutTitle: 'Acerca de',
     version: (version: string) => `Versión ${version}`,
   },

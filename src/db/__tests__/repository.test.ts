@@ -240,3 +240,42 @@ describe('events', () => {
     );
   });
 });
+
+describe('whole dataset', () => {
+  it('exports, replaces and clears everything', async () => {
+    const first = await repo.createAccount(newAccount({ name: 'Primera' }));
+    await repo.addEvent(first.id, { type: 'balance', date: '2026-10-05', balance: 1_000_100 });
+    const exported = await repo.exportData();
+    expect(exported.accounts).toHaveLength(1);
+    expect(exported.events).toHaveLength(2);
+
+    await repo.createAccount(newAccount({ name: 'Otra' }));
+    await repo.replaceAll(exported);
+    expect((await repo.listAccounts()).map((a) => a.name)).toEqual(['Primera']);
+    expect(await repo.listEvents(first.id)).toEqual(exported.events);
+    // Imported data is, by definition, backed up.
+    expect(await repo.getMeta('lastBackupAt')).toBe(await repo.getMeta('lastDataChangeAt'));
+
+    await repo.clearAll();
+    expect(await repo.exportData()).toEqual({ accounts: [], events: [] });
+    expect(await repo.getMeta('lastBackupAt')).toBeUndefined();
+  });
+
+  it('leaves the data untouched when a replacement fails halfway', async () => {
+    const keep = await repo.createAccount(newAccount({ name: 'Queda' }));
+    const exported = await repo.exportData();
+    const broken = {
+      accounts: [...exported.accounts, ...exported.accounts],
+      events: exported.events,
+    };
+
+    await expect(repo.replaceAll(broken)).rejects.toThrow();
+    expect((await repo.listAccounts()).map((a) => a.id)).toEqual([keep.id]);
+  });
+
+  it('records when a backup was made', async () => {
+    expect(await repo.getMeta('lastBackupAt')).toBeUndefined();
+    await repo.markBackedUp();
+    expect(await repo.getMeta('lastBackupAt')).toMatch(/^2026-10-16T/);
+  });
+});

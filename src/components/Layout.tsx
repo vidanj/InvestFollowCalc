@@ -20,6 +20,24 @@ function ChartIcon() {
   );
 }
 
+function BackupIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
+  );
+}
+
 function SettingsIcon() {
   return (
     <svg
@@ -42,18 +60,22 @@ function SettingsIcon() {
 
 const NAV_ITEMS: { to: string; label: string; icon: ReactNode }[] = [
   { to: '/', label: strings.nav.portfolio, icon: <ChartIcon /> },
+  { to: '/backup', label: strings.nav.backup, icon: <BackupIcon /> },
   { to: '/settings', label: strings.nav.settings, icon: <SettingsIcon /> },
 ];
 
 // Account pages hang from the portfolio, so it stays active there.
 function isActive(to: string, pathname: string): boolean {
-  return to === '/' ? !pathname.startsWith('/settings') : pathname.startsWith(to);
+  const sections = NAV_ITEMS.map((item) => item.to).filter((path) => path !== '/');
+  return to === '/'
+    ? !sections.some((section) => pathname.startsWith(section))
+    : pathname.startsWith(to);
 }
 
 function NavItems({ layout }: { layout: 'bar' | 'side' }) {
   const { pathname } = useLocation();
   return (
-    <ul className={layout === 'bar' ? 'grid grid-cols-2' : 'flex flex-col gap-1'}>
+    <ul className={layout === 'bar' ? 'grid grid-cols-3' : 'flex flex-col gap-1'}>
       {NAV_ITEMS.map((item) => {
         const active = isActive(item.to, pathname);
         const tone = active

@@ -5,7 +5,8 @@ import { Notice } from '../../components/Notice';
 import { PageHeader } from '../../components/PageHeader';
 import { Stat } from '../../components/Stat';
 import { toneOf } from '../../components/tone';
-import { useAccountsWithEvents } from '../../db/hooks';
+import { backupReminder, BACKUP_REMINDER_DAYS } from '../../backup/reminder';
+import { useAccountsWithEvents, useMeta } from '../../db/hooks';
 import type { AccountWithEvents } from '../../db/repository';
 import { formatMoney, formatPercent, formatSignedMoney } from '../../domain/money';
 import { computePortfolio, type CurrencyPortfolio } from '../../domain/portfolio';
@@ -77,6 +78,31 @@ function computeSafely(active: AccountWithEvents[]): CurrencyPortfolio[] | null 
   }
 }
 
+function BackupReminder({ hasData }: { hasData: boolean }) {
+  const lastBackupAt = useMeta('lastBackupAt');
+  const lastDataChangeAt = useMeta('lastDataChangeAt');
+  if (lastBackupAt === undefined || lastDataChangeAt === undefined) return null;
+
+  const reminder = backupReminder({ hasData, lastBackupAt, lastDataChangeAt, now: new Date() });
+  if (!reminder) return null;
+  return (
+    <div className="mb-6">
+      <Notice tone="warning">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p>
+            {reminder === 'never'
+              ? strings.backup.reminderNever
+              : strings.backup.reminderStale(BACKUP_REMINDER_DAYS)}
+          </p>
+          <ButtonLink variant="secondary" to="/backup">
+            {strings.backup.reminderAction}
+          </ButtonLink>
+        </div>
+      </Notice>
+    </div>
+  );
+}
+
 export function PortfolioPage() {
   const items = useAccountsWithEvents();
   const active = useMemo(() => items?.filter((item) => !item.account.archived) ?? [], [items]);
@@ -91,6 +117,7 @@ export function PortfolioPage() {
         title={strings.portfolio.title}
         actions={<ButtonLink to="/accounts/new">{strings.accounts.new}</ButtonLink>}
       />
+      <BackupReminder hasData={items.length > 0} />
       {items.length === 0 && (
         <section className="rounded-xl border border-dashed border-slate-300 p-6 text-center dark:border-slate-700">
           <h3 className="text-base font-medium">{strings.accounts.emptyTitle}</h3>

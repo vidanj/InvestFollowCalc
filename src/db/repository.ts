@@ -218,6 +218,45 @@ export class Repository {
     });
   }
 
+  // --- Whole dataset (backups) ---
+
+  /** Every account and movement, in a deterministic order (stable backup files). */
+  async exportData(): Promise<{ accounts: AccountRecord[]; events: EventRecord[] }> {
+    return this.db.transaction('r', this.db.accounts, this.db.events, async () => ({
+      accounts: await this.listAccounts(),
+      events: sortEvents(await this.db.events.toArray()) as EventRecord[],
+    }));
+  }
+
+  /**
+   * Replaces all accounts and movements with `data` in one transaction: either everything is
+   * replaced or nothing changes. The data was just read from a backup, so it counts as backed up.
+   */
+  async replaceAll(data: { accounts: AccountRecord[]; events: EventRecord[] }): Promise<void> {
+    await this.db.transaction('rw', this.db.accounts, this.db.events, this.db.meta, async () => {
+      await this.db.accounts.clear();
+      await this.db.events.clear();
+      await this.db.accounts.bulkAdd(data.accounts);
+      await this.db.events.bulkAdd(data.events);
+      const now = this.clock.now();
+      await this.touch(now);
+      await this.db.meta.put({ key: 'lastBackupAt', value: now });
+    });
+  }
+
+  /** Deletes every account, movement and backup record on this device. */
+  async clearAll(): Promise<void> {
+    await this.db.transaction('rw', this.db.accounts, this.db.events, this.db.meta, async () => {
+      await this.db.accounts.clear();
+      await this.db.events.clear();
+      await this.db.meta.clear();
+    });
+  }
+
+  async markBackedUp(): Promise<void> {
+    await this.db.meta.put({ key: 'lastBackupAt', value: this.clock.now() });
+  }
+
   // --- Meta ---
 
   async getMeta(key: MetaKey): Promise<string | undefined> {

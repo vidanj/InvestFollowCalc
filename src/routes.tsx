@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router';
 import { Layout } from './components/Layout';
 import { AccountDetailPage } from './features/accounts/AccountDetailPage';
 import { EditAccountPage, NewAccountPage } from './features/accounts/AccountFormPage';
+import { BackupPage } from './features/backup/BackupPage';
 import { MovementFormPage } from './features/movements/MovementFormPage';
 import { PortfolioPage } from './features/portfolio/PortfolioPage';
 import { SettingsPage } from './features/settings/SettingsPage';
@@ -16,6 +17,7 @@ export function AppRoutes() {
         <Route path="accounts/:accountId/edit" element={<EditAccountPage />} />
         <Route path="accounts/:accountId/movements/new" element={<MovementFormPage />} />
         <Route path="accounts/:accountId/movements/:eventId" element={<MovementFormPage />} />
+        <Route path="backup" element={<BackupPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

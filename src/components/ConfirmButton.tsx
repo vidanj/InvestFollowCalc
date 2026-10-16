@@ -5,11 +5,18 @@ import { Button } from './Button';
 interface ConfirmButtonProps {
   label: string;
   warning: string;
+  /** Text of the second, final button (defaults to "Sí, eliminar"). */
+  confirmLabel?: string;
   onConfirm: () => void;
 }
 
 /** A destructive action that asks for an explicit second click before running. */
-export function ConfirmButton({ label, warning, onConfirm }: ConfirmButtonProps) {
+export function ConfirmButton({
+  label,
+  warning,
+  confirmLabel = strings.common.confirmDelete,
+  onConfirm,
+}: ConfirmButtonProps) {
   const [asking, setAsking] = useState(false);
 
   if (!asking) {
@@ -30,7 +37,7 @@ export function ConfirmButton({ label, warning, onConfirm }: ConfirmButtonProps)
       <p className="text-sm">{warning}</p>
       <div className="flex gap-2">
         <Button variant="danger" onClick={onConfirm}>
-          {strings.common.confirmDelete}
+          {confirmLabel}
         </Button>
         <Button
           variant="ghost"

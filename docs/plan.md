@@ -228,6 +228,15 @@ Se reportaron al usuario al cerrar cada fase; cualquiera puede revertirse si no 
   - El tema (Sistema/Claro/Oscuro) se guarda en `localStorage` de este dispositivo; no viaja en los respaldos.
   - Ajustes en esta fase: tema, estado del almacenamiento, privacidad y versión. "Borrar todos los datos" pasa a la fase 4, junto con los respaldos.
   - Las gráficas se cargan aparte (lazy): la carga inicial pasó de 242 a 129 KB comprimidos.
+- **Fase 4:**
+  - Contraseña de respaldo: mínimo 8 caracteres, escrita dos veces; sin reglas extra de complejidad.
+  - El respaldo incluye cuentas archivadas; no incluye el tema.
+  - Guardar: diálogo "Guardar como" en escritorio (Chromium), menú de compartir en teléfonos, descarga en el resto. Si el usuario cancela, no cuenta como respaldo.
+  - Importar = reemplazar todo, con vista previa y doble confirmación; al importar, los datos cuentan como respaldados (no aparece el recordatorio).
+  - Recordatorio: si nunca se ha respaldado (y hay datos) o si hubo cambios y el último respaldo tiene más de 30 días.
+  - "Borrar todos los datos" (en Ajustes) pide escribir BORRAR y sugiere respaldar antes.
+  - Nueva sección "Respaldo" en la navegación (Portafolio · Respaldo · Ajustes).
+  - Formato documentado en `docs/respaldo.md`.
 
 ---
 

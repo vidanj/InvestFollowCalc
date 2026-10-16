@@ -34,9 +34,11 @@ Plan completo y fases: [docs/plan.md](docs/plan.md).
 ## Datos, migraciones y respaldos
 
 - Cambiar el esquema de Dexie ⇒ nueva `version()` con migración + test + subir `schemaVersion`.
-- Los respaldos antiguos siempre deben poder importarse (migrar al importar).
+- Los respaldos antiguos siempre deben poder importarse: al subir `SCHEMA_VERSION`, agregar el paso en
+  `MIGRATIONS` de `src/backup/backup.ts` y una prueba con un respaldo de la versión anterior.
 - Respaldo siempre cifrado (PBKDF2-SHA256 600k → AES-256-GCM). Cambiar parámetros ⇒ nuevo `formatVersion`.
 - Nunca guardar ni loggear la contraseña del respaldo. No existe exportación en texto plano.
+- Importar valida todo antes de escribir y reemplaza en una sola transacción. Formato: `docs/respaldo.md`.
 
 ## Idioma y estilo
 

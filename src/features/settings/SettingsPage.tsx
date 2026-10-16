@@ -1,5 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Button } from '../../components/Button';
+import { Button, ButtonLink } from '../../components/Button';
+import { Notice } from '../../components/Notice';
+import { TextField } from '../../components/TextField';
+import { useRepository } from '../../db/repositoryContext';
 import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { requestPersistentStorage } from '../../db/persistence';
@@ -33,6 +36,75 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
       <h3 className="font-semibold">{title}</h3>
       {children}
     </section>
+  );
+}
+
+/** Two steps: open the section, then type the confirmation word. */
+function DeleteAllCard() {
+  const repository = useRepository();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [done, setDone] = useState(false);
+  const t = strings.settings;
+
+  const erase = async () => {
+    await repository.clearAll();
+    setDone(true);
+    setOpen(false);
+    setTyped('');
+  };
+
+  return (
+    <Card title={t.dangerTitle}>
+      <p className="text-sm">{t.dangerBody}</p>
+      {done && <Notice tone="success">{t.deleted}</Notice>}
+      {!open ? (
+        <Button
+          variant="secondary"
+          onClick={() => {
+            setOpen(true);
+            setDone(false);
+          }}
+        >
+          {t.deleteAll}
+        </Button>
+      ) : (
+        <div className="flex flex-col gap-3 rounded-lg border border-red-300 p-3 dark:border-red-800">
+          <p className="text-sm">{t.dangerBackupHint}</p>
+          <ButtonLink variant="secondary" to="/backup">
+            {strings.backup.reminderAction}
+          </ButtonLink>
+          <TextField
+            label={t.confirmPrompt}
+            autoComplete="off"
+            value={typed}
+            onChange={(e) => {
+              setTyped(e.target.value);
+            }}
+          />
+          <div className="flex gap-2">
+            <Button
+              variant="danger"
+              disabled={typed.trim().toUpperCase() !== t.confirmWord}
+              onClick={() => {
+                void erase();
+              }}
+            >
+              {t.confirmDeleteAll}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setOpen(false);
+                setTyped('');
+              }}
+            >
+              {strings.common.cancel}
+            </Button>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -89,6 +161,8 @@ export function SettingsPage() {
             </p>
           ))}
         </Card>
+
+        <DeleteAllCard />
 
         <Card title={strings.settings.aboutTitle}>
           <p className="text-sm">
