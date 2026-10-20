@@ -17,7 +17,7 @@ export default defineConfig({
   projects: [
     { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'mobile-pixel-7', use: { ...devices['Pixel 7'] } },
-    // iPhone (WebKit) project is added in phase 6 together with the WebKit browser install.
+    { name: 'mobile-iphone-14', use: { ...devices['iPhone 14'] } },
   ],
   webServer: {
     command: `npm run build && npm run preview -- --port ${PORT} --strictPort`,

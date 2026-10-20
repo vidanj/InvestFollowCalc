@@ -1,7 +1,7 @@
 {
   "name": "investfollowcalc",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Local-only PWA to track how much your investments generate, separated from what you contribute.",
   "license": "MIT",
   "type": "module",

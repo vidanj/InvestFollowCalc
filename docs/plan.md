@@ -245,6 +245,11 @@ Se reportaron al usuario al cerrar cada fase; cualquiera puede revertirse si no 
   - Tarjeta "Instalar la app" en Ajustes: botón donde el navegador lo ofrece, instrucciones en iPhone/iPad y en el resto.
   - Íconos generados con `npm run icons` (Chromium de Playwright, sin dependencias nuevas).
   - La pantalla de Respaldo se carga aparte: la carga inicial sigue en ~131 KB comprimidos.
+- **Fase 6:**
+  - Deploy a GitHub Pages **sólo manual** (`workflow_dispatch`), y sólo desde `main` (decidido por el usuario el 2026-10-16). Un push a `main` no publica.
+  - CI agrega un job de e2e en Chromium y WebKit; los e2e locales cubren escritorio, Pixel 7 e iPhone 14.
+  - Versión 1.0.0 en `package.json` y `CHANGELOG.md`; el tag `v1.0.0` queda para cuando el usuario lo ordene.
+  - Proceso de release y verificación manual en dispositivos en `docs/release.md`.
 
 ---
 

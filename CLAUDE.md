@@ -15,6 +15,8 @@ Plan completo y fases: [docs/plan.md](docs/plan.md).
    cambios y proponer mensaje de commit, y esperar.
    **Ramas:** una rama por fase (`chore/phase-0-scaffold`, `feat/phase-1-engine`, …). Nunca commitear
    directo en `main`; integrar a `main` (merge o PR) sólo cuando el usuario lo ordene.
+   **Deploy:** el workflow `deploy.yml` es sólo manual (`workflow_dispatch`, sólo desde `main`). Lanzarlo,
+   habilitar Pages o crear tags requiere orden explícita. Proceso completo: `docs/release.md`.
 3. **Privacidad absoluta.** Ningún dato del usuario sale del dispositivo. Prohibido: llamadas de red a
    terceros, analytics, telemetría, CDNs, fuentes externas, logs con montos. No relajar la CSP
    (`vite.config.ts`): nada de scripts o `<style>` en línea ni `eval`/`new Function` (zod va en
