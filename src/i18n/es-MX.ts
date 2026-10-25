@@ -112,6 +112,8 @@ const issueMessages: Record<ValidationIssueCode, string> = {
   INVALID_BALANCE: 'El saldo debe ser un monto válido, de 0 o más.',
   INVALID_AMOUNT: 'El monto debe ser mayor a 0.',
   BALANCE_AFTER_TOO_LOW: 'El saldo después de una aportación no puede ser menor que la aportación.',
+  WITHDRAWAL_EXCEEDS_BALANCE:
+    'El retiro es mayor que el saldo conocido de la cuenta. Si la cuenta ya tiene más, actualiza su saldo antes o escribe el saldo después del retiro.',
 };
 
 const repositoryMessages: Record<RepositoryErrorCode, string> = {

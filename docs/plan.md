@@ -294,6 +294,11 @@ Se reportaron al usuario al cerrar cada fase; cualquiera puede revertirse si no 
     semanales; guarda el mes en `skippedMonths`. Ese mes cuenta 0 (en semanales, todo el mes) y el
     siguiente vuelve solo. No aplica a anuales, únicos ni ingresos. Campo opcional y aditivo: no
     cambia índices de Dexie ni `SCHEMA_VERSION` (v3 aún no se publica).
+  - **Retiros mayores al saldo** (decidido por el usuario el 2026-10-25: rechazarlos): un retiro sin
+    saldo después no puede exceder el saldo conocido. Se valida al escribir (registrar, editar,
+    borrar) y sólo bloquea violaciones nuevas; los datos y respaldos anteriores se siguen leyendo. El
+    portafolio ya no revalida su línea de tiempo sintética, así que un saldo estimado negativo en
+    datos viejos no lo rompe (era la causa de la prueba de propiedades que fallaba al azar).
 
 ---
 

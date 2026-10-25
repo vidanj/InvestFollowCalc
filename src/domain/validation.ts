@@ -11,7 +11,8 @@ export type ValidationIssueCode =
   | 'INVALID_SEQ'
   | 'INVALID_BALANCE'
   | 'INVALID_AMOUNT'
-  | 'BALANCE_AFTER_TOO_LOW';
+  | 'BALANCE_AFTER_TOO_LOW'
+  | 'WITHDRAWAL_EXCEEDS_BALANCE';
 
 export interface ValidationIssue {
   code: ValidationIssueCode;
@@ -81,9 +82,56 @@ export function validateTimeline(events: readonly AccountEvent[]): ValidationIss
 }
 
 /**
+ * Ids of the withdrawals registered without the balance after them that take out more than the
+ * account is known to hold right before them: its last known balance plus the movements registered
+ * since. (With the balance after it, the balance before a withdrawal is that plus the amount, so it
+ * always covers it.)
+ *
+ * Not a timeline rule: data saved before this check existed must stay readable and importable, so
+ * it is only enforced when writing (`validateCandidate`, `validateRemoval`).
+ */
+export function overdrawnWithdrawals(events: readonly AccountEvent[]): string[] {
+  const overdrawn: string[] = [];
+  let known = 0;
+  for (const event of sortEvents(events)) {
+    if (event.type === 'balance') known = event.balance;
+    else if (event.balanceAfter !== undefined) known = event.balanceAfter;
+    else if (event.type === 'deposit') known += event.amount;
+    else {
+      if (event.amount > known) overdrawn.push(event.id);
+      known -= event.amount;
+    }
+  }
+  return overdrawn;
+}
+
+/**
+ * Overdrawn withdrawals a change would introduce. Ones already in older data are not reported, so
+ * they never block unrelated edits; the event being saved (`changedId`) is always checked.
+ */
+function newOverdrafts(
+  before: readonly AccountEvent[],
+  after: readonly AccountEvent[],
+  changedId?: string,
+): ValidationIssue[] {
+  const existing = new Set(overdrawnWithdrawals(before));
+  return overdrawnWithdrawals(after)
+    .filter((id) => id === changedId || !existing.has(id))
+    .map((eventId) => ({ code: 'WITHDRAWAL_EXCEEDS_BALANCE', eventId }));
+}
+
+/** Validates deleting the event `id`: no later withdrawal may be left without funds. */
+export function validateRemoval(events: readonly AccountEvent[], id: string): ValidationIssue[] {
+  return newOverdrafts(
+    events,
+    events.filter((e) => e.id !== id),
+  );
+}
+
+/**
  * Validates adding `candidate` to an account, or replacing the event with the same id. Besides the
- * timeline rules, the initial balance must stay a balance and stay the earliest event, and no
- * other event may be dated before it.
+ * timeline rules, the initial balance must stay a balance and stay the earliest event, no other
+ * event may be dated before it, and no withdrawal may take out more than the known balance.
  */
 export function validateCandidate(
   events: readonly AccountEvent[],
@@ -105,7 +153,10 @@ export function validateCandidate(
     structural.push({ code: 'BEFORE_INITIAL_BALANCE', eventId: candidate.id });
   }
 
-  if (structural.length === 0) return timelineIssues;
+  if (structural.length === 0) {
+    // Funds are only checked on an otherwise valid timeline.
+    return timelineIssues.length > 0 ? timelineIssues : newOverdrafts(events, next, candidate.id);
+  }
   // The structural issue already explains why the timeline would not start with a balance.
   return [...structural, ...timelineIssues.filter((i) => i.code !== 'FIRST_EVENT_NOT_BALANCE')];
 }

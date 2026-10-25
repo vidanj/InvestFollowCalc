@@ -91,6 +91,26 @@ describe('registering movements', () => {
     expect(screen.getByText('+$49.00')).toBeVisible();
   });
 
+  it('does not let a withdrawal take out more than the account holds', async () => {
+    const repository = createTestRepository();
+    const account = await seedAccount(repository);
+    const { user } = renderRoute(`/accounts/${account.id}/movements/new`, repository);
+
+    await user.click(await screen.findByLabelText(strings.movement.types.withdrawal));
+    await user.type(screen.getByLabelText(strings.movement.amount), '10,000.01');
+    expect(
+      await screen.findByText(strings.errors.issue('WITHDRAWAL_EXCEEDS_BALANCE')),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: strings.common.save }));
+    expect(await repository.listEvents(account.id)).toHaveLength(1);
+
+    // With the balance after it, the app knows how much there was before: it is accepted.
+    await user.type(screen.getByLabelText(new RegExp(strings.movement.balanceAfter)), '500');
+    await user.click(screen.getByRole('button', { name: strings.common.save }));
+    await screen.findByRole('heading', { name: 'Ahorro' });
+    expect(await repository.listEvents(account.id)).toHaveLength(2);
+  });
+
   it('shows rule violations before saving', async () => {
     const repository = createTestRepository();
     const account = await seedAccount(repository);

@@ -1,5 +1,5 @@
 import { compareIsoDates } from './dates';
-import { computeAccount } from './engine';
+import { computeTimeline } from './engine';
 import {
   CURRENCIES,
   type Account,
@@ -148,7 +148,8 @@ export function computePortfolio(inputs: readonly PortfolioInput[]): CurrencyPor
         currency,
         accountIds: members.map((m) => m.account.id),
         timeline,
-        computation: computeAccount(timeline),
+        // Each account was validated while building the timeline.
+        computation: computeTimeline(timeline),
       },
     ];
   });

@@ -222,6 +222,35 @@ describe('events', () => {
     expect(moved).toMatchObject({ date: '2026-09-25', balance: 900_000 });
   });
 
+  it('rejects withdrawing more than the known balance, on add, edit and delete', async () => {
+    const account = await repo.createAccount(newAccount({ initialBalance: 100_000 }));
+    await expectRepositoryError(
+      repo.addEvent(account.id, { type: 'withdrawal', date: '2026-10-05', amount: 100_001 }),
+      'INVALID_EVENT',
+      ['WITHDRAWAL_EXCEEDS_BALANCE'],
+    );
+
+    const funding = await repo.addEvent(account.id, {
+      type: 'deposit',
+      date: '2026-10-02',
+      amount: 50_000,
+    });
+    const take = await repo.addEvent(account.id, {
+      type: 'withdrawal',
+      date: '2026-10-05',
+      amount: 150_000,
+    });
+    await expectRepositoryError(repo.deleteEvent(funding.id), 'INVALID_EVENT', [
+      'WITHDRAWAL_EXCEEDS_BALANCE',
+    ]);
+    await expectRepositoryError(
+      repo.updateEvent(take.id, { type: 'withdrawal', date: '2026-10-05', amount: 150_001 }),
+      'INVALID_EVENT',
+      ['WITHDRAWAL_EXCEEDS_BALANCE'],
+    );
+    expect(await repo.listEvents(account.id)).toHaveLength(3);
+  });
+
   it('deletes a movement', async () => {
     const account = await repo.createAccount(newAccount());
     const event = await repo.addEvent(account.id, {

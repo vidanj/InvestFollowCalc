@@ -35,6 +35,9 @@ Plan completo y fases: [docs/plan.md](docs/plan.md).
   pendientes). Verificada con fast-check en `src/domain/__tests__/invariants.test.ts`.
 - Cobertura mínima de `src/domain/`: 95% (umbral en `vite.config.ts`; `npm run test:coverage`).
 - Aportaciones/retiros nunca cuentan como ganancia/pérdida.
+- Un retiro sin `balanceAfter` no puede exceder el saldo conocido (`overdrawnWithdrawals`): se valida
+  sólo al escribir (`validateCandidate`/`validateRemoval`), nunca en `validateTimeline`, para que los
+  datos y respaldos anteriores se sigan leyendo.
 - Presupuesto: `te queda = ingresos − gastos` y categorías = gastos; créditos: cada pago = capital +
   interés + IVA, saldo final 0, `total = capital − ajustes de saldo + intereses + IVA`. Verificadas
   con fast-check en `src/domain/__tests__/budgetInvariants.test.ts`.

@@ -12,7 +12,13 @@ import { compareIsoDates } from '../domain/dates';
 import { DEFAULT_INVEST_PLAN, parseInvestPlan, type InvestPlan } from '../domain/investPlan';
 import type { YearMonth } from '../domain/months';
 import type { AccountEvent, Cents, Currency, EventDraft, IsoDate } from '../domain/types';
-import { nextSeq, sortEvents, validateCandidate, type ValidationIssue } from '../domain/validation';
+import {
+  nextSeq,
+  sortEvents,
+  validateCandidate,
+  validateRemoval,
+  type ValidationIssue,
+} from '../domain/validation';
 import type {
   AccountRecord,
   BudgetItemRecord,
@@ -251,6 +257,8 @@ export class Repository {
       if (!current) throw new RepositoryError('EVENT_NOT_FOUND');
       const existing = await this.listEvents(current.accountId);
       if (existing[0]?.id === id) throw new RepositoryError('CANNOT_DELETE_INITIAL');
+      const issues = validateRemoval(existing, id);
+      if (issues.length > 0) throw new RepositoryError('INVALID_EVENT', issues);
       await this.db.events.delete(id);
       await this.touch(this.clock.now());
     });

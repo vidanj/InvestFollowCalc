@@ -64,7 +64,16 @@ export function computeAccount(events: readonly AccountEvent[]): AccountComputat
 
   const issues = validateTimeline(events);
   if (issues.length > 0) throw new DomainValidationError(issues);
+  return computeTimeline(events);
+}
 
+/**
+ * `computeAccount` without validating: only for timelines built by code from accounts that were
+ * already validated (the portfolio). There, an account's estimated balance can be negative in
+ * data saved before withdrawals were checked against the balance; the math still holds.
+ */
+export function computeTimeline(events: readonly AccountEvent[]): AccountComputation {
+  if (events.length === 0) return { periods: [], summary: null };
   const [first, ...rest] = sortEvents(events);
   // Validation guarantees the first event is the initial balance.
   const initial = first as BalanceEvent;

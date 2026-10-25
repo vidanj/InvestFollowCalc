@@ -18,6 +18,12 @@ Por cada cuenta hay una lista de movimientos, cada uno con fecha:
 - Los montos se guardan en **centavos enteros**; nunca hay errores de redondeo en las sumas.
 - Si hay varios movimientos el mismo día, cuentan en el orden en que se capturaron.
 - Ningún movimiento puede tener fecha anterior al saldo inicial.
+- Un **retiro sin saldo después** no puede ser mayor que el saldo conocido de la cuenta en ese
+  momento (último saldo conocido + aportaciones y retiros registrados desde entonces). Si la cuenta
+  ya tiene más (porque generó), se actualiza el saldo antes o se escribe el saldo después del retiro:
+  con él, el saldo de antes es ese saldo + el retiro, así que siempre alcanza. La regla se revisa al
+  registrar, editar o borrar movimientos; los datos guardados antes de que existiera (y sus
+  respaldos) se siguen leyendo e importando.
 
 ## Periodos
 
@@ -103,7 +109,9 @@ Para cada moneda, las cuentas se combinan en una sola línea de tiempo:
 - En cada fecha en que alguna cuenta actualiza su saldo, el valor del portafolio es la suma del
   último saldo conocido de cada cuenta (más sus movimientos registrados desde entonces).
 
-Con esto, la ganancia del portafolio es exactamente la suma de las ganancias de sus cuentas. La
+Con esto, la ganancia del portafolio es exactamente la suma de las ganancias de sus cuentas. Si en
+datos anteriores a la regla de retiros una cuenta quedó con saldo estimado negativo, el portafolio
+lo suma tal cual (los periodos sin base positiva no tienen porcentaje) en lugar de fallar. La
 ganancia de una cuenta aparece en el portafolio en la fecha en que esa cuenta se actualiza.
 
 ---

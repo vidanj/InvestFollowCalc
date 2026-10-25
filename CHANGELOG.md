@@ -34,6 +34,13 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); v
 - **Inversión sugerida** (porcentaje de los ingresos, sin pasar de lo que queda) con proyección a
   1, 3, 5 y 10 años usando el rendimiento real del portafolio, de una cuenta o una tasa escrita.
 
+### Inversiones
+
+- Un retiro sin saldo después ya no puede ser mayor que el saldo conocido de la cuenta (se avisa
+  antes de guardar, también al editar o borrar movimientos).
+- Corregido: el portafolio fallaba ("los datos tienen un problema") si una cuenta tenía un retiro
+  así junto a otra cuenta de la misma moneda.
+
 ### Datos
 
 - Esquema v3 (presupuesto, créditos, repeticiones); los respaldos de las versiones 1 y 2 se siguen
