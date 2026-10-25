@@ -22,10 +22,22 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); v
 - "Actualizar saldo" recalcula desde el próximo pago y muestra la diferencia con el plan.
 - Sus pagos entran solos como gastos del mes en el presupuesto.
 
+### Repeticiones, cargos fijos, año e inversión
+
+- Los conceptos se repiten cada semana (cargos reales del mes), cada mes o cada año (completo en su
+  mes), además de los de una sola vez.
+- Recordatorio de **cargos fijos**: cuánto tener disponible en la cuenta para los cargos automáticos
+  del mes.
+- **Tu año**: ingresos, gastos y lo que quedará al cierre, registrado y proyectado.
+- **Inversión sugerida** (porcentaje de los ingresos, sin pasar de lo que queda) con proyección a
+  1, 3, 5 y 10 años usando el rendimiento real del portafolio, de una cuenta o una tasa escrita.
+
 ### Datos
 
-- Esquema v2 (presupuesto y créditos); los respaldos de la versión 1 se siguen importando.
+- Esquema v3 (presupuesto, créditos, repeticiones); los respaldos de las versiones 1 y 2 se siguen
+  importando.
 - El recordatorio de respaldo y "Borrar todos los datos" consideran también el presupuesto.
+- Los ajustes de la inversión sugerida viajan en los respaldos.
 
 ## [1.0.0] — 2026-10-16
 

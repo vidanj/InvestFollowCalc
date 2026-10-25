@@ -1,13 +1,22 @@
 import { buildSchedule, type Credit } from './credit';
+import { addDays, addMonths, compareIsoDates, daysBetween, isIsoDate } from './dates';
 import { isValidCents } from './money';
 import {
   addMonthsToYearMonth,
   compareYearMonths,
   isYearMonth,
+  monthRange,
+  monthsBetween,
   toYearMonth,
   type YearMonth,
 } from './months';
-import { CURRENCIES, type Cents, type Currency, type DistributiveOmit } from './types';
+import {
+  CURRENCIES,
+  type Cents,
+  type Currency,
+  type DistributiveOmit,
+  type IsoDate,
+} from './types';
 
 /** Fixed list; `credit` also holds the payments of registered credits. */
 export const EXPENSE_CATEGORIES = [
@@ -26,17 +35,22 @@ export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 
 export const BUDGET_NAME_MAX_LENGTH = 60;
 
+/** How often an item comes back: never, every 7 days, every month or every year. */
+export const REPEATS = ['none', 'weekly', 'monthly', 'yearly'] as const;
+export type Repeat = (typeof REPEATS)[number];
+
 interface BudgetItemBase {
   id: string;
   name: string;
   /** Always positive; the direction comes from `kind`. */
   amount: Cents;
   currency: Currency;
-  /** The month of a one-off item, or the first month of a recurring one. */
+  /** The month of a one-off item, or the first month of a repeating one. */
   month: YearMonth;
-  /** Repeats every month from `month` on. */
-  recurring: boolean;
-  /** Last month (included) of a recurring item; absent while it keeps repeating. */
+  repeat: Repeat;
+  /** Weekly items only: date of the first charge (inside `month`); it repeats every 7 days. */
+  firstDate?: IsoDate;
+  /** Last month (included) of a repeating item; absent while it keeps repeating. */
   endMonth?: YearMonth;
 }
 
@@ -52,28 +66,68 @@ export interface ExpenseItem extends BudgetItemBase {
 export type BudgetItem = IncomeItem | ExpenseItem;
 export type BudgetItemDraft = DistributiveOmit<BudgetItem, 'id'>;
 
-type Schedule = Pick<BudgetItem, 'month' | 'recurring' | 'endMonth'>;
+type Schedule = Pick<BudgetItem, 'month' | 'repeat' | 'firstDate' | 'endMonth'>;
 
-/** Whether the item counts in `month`. */
-export function isActiveIn(item: Schedule, month: YearMonth): boolean {
-  if (!item.recurring) return item.month === month;
-  return (
-    compareYearMonths(item.month, month) <= 0 &&
-    (item.endMonth === undefined || compareYearMonths(month, item.endMonth) <= 0)
-  );
+function lastDayOf(month: YearMonth): IsoDate {
+  return addDays(addMonths(`${month}-01`, 1), -1);
+}
+
+/** First date on or after `from` that falls on the 7-day cadence started at `first`. */
+function nextWeekly(first: IsoDate, from: IsoDate): IsoDate {
+  const gap = daysBetween(first, from);
+  return gap <= 0 ? first : addDays(first, Math.ceil(gap / 7) * 7);
 }
 
 /**
- * A recurring item can be changed "from this month on" (keeping its past) only when it started
- * before `month` and still counts in it.
+ * How many times the item is charged (or paid) in `month`: once for one-offs in their month,
+ * monthly items every month, yearly items in their month every 12 months, and weekly items the
+ * real number of times their 7-day cadence lands in the month (4 or 5).
+ */
+export function occurrencesIn(item: Schedule, month: YearMonth): number {
+  if (compareYearMonths(month, item.month) < 0) return 0;
+  if (item.repeat === 'none') return month === item.month ? 1 : 0;
+  if (item.endMonth !== undefined && compareYearMonths(month, item.endMonth) > 0) return 0;
+  switch (item.repeat) {
+    case 'monthly':
+      return 1;
+    case 'yearly':
+      return monthsBetween(item.month, month) % 12 === 0 ? 1 : 0;
+    case 'weekly': {
+      if (item.firstDate === undefined) return 0;
+      const first = nextWeekly(item.firstDate, `${month}-01`);
+      const last = lastDayOf(month);
+      return compareIsoDates(first, last) > 0 ? 0 : 1 + Math.floor(daysBetween(first, last) / 7);
+    }
+  }
+}
+
+/** Whether the item counts in `month`. */
+export function isActiveIn(item: Schedule, month: YearMonth): boolean {
+  return occurrencesIn(item, month) > 0;
+}
+
+/**
+ * A repeating item can be changed "from this month on" (keeping its past) only when it started
+ * before `month` and counts in it.
  */
 export function canSplitAt(item: Schedule, month: YearMonth): boolean {
-  return item.recurring && compareYearMonths(item.month, month) < 0 && isActiveIn(item, month);
+  return (
+    item.repeat !== 'none' && compareYearMonths(item.month, month) < 0 && isActiveIn(item, month)
+  );
 }
 
 /** The item as it was before `month`: it stops repeating the month before. */
 export function endBefore<T extends BudgetItem>(item: T, month: YearMonth): T {
   return { ...item, endMonth: addMonthsToYearMonth(month, -1) };
+}
+
+/**
+ * `draft` starting in `month` (the changed version of a split item). A weekly item keeps its
+ * weekday: its first date moves to the first charge of its cadence inside `month`.
+ */
+export function startingIn<T extends BudgetItemDraft>(draft: T, month: YearMonth): T {
+  if (draft.repeat !== 'weekly' || draft.firstDate === undefined) return { ...draft, month };
+  return { ...draft, month, firstDate: nextWeekly(draft.firstDate, `${month}-01`) };
 }
 
 // --- Credit payments in the budget ---
@@ -137,6 +191,14 @@ export interface CategoryTotal {
   amount: Cents;
 }
 
+/** An item as it counts in one month: weekly items can be charged 4 or 5 times. */
+export interface MonthEntry<T extends BudgetItem = BudgetItem> {
+  item: T;
+  times: number;
+  /** `item.amount × times`. */
+  amount: Cents;
+}
+
 export interface MonthSummary {
   month: YearMonth;
   currency: Currency;
@@ -148,10 +210,17 @@ export interface MonthSummary {
   /** `expenses / income`; `null` without income. */
   spentRatio: number | null;
   creditPayments: Cents;
+  /**
+   * What the account must have available for the month's automatic charges: every expense that
+   * repeats (weekly, monthly, or yearly in its month) plus the credit payments. One-offs aside.
+   */
+  fixedCharges: Cents;
+  /** The repeating expenses inside `fixedCharges`. */
+  repeatingExpenses: Cents;
   /** Non-zero categories, largest first. */
   byCategory: CategoryTotal[];
-  incomeItems: IncomeItem[];
-  expenseItems: ExpenseItem[];
+  incomeItems: MonthEntry<IncomeItem>[];
+  expenseItems: MonthEntry<ExpenseItem>[];
   credits: CreditMonthPayment[];
 }
 
@@ -159,11 +228,18 @@ const sum = (values: readonly number[]): number => values.reduce((a, b) => a + b
 const byAmountDesc = (a: { amount: Cents }, b: { amount: Cents }) => b.amount - a.amount;
 
 function summarize(data: BudgetData, month: YearMonth, currency: Currency): MonthSummary {
-  const items = data.items.filter((i) => i.currency === currency && isActiveIn(i, month));
-  const incomeItems = items.filter((i): i is IncomeItem => i.kind === 'income').sort(byAmountDesc);
-  const expenseItems = items
-    .filter((i): i is ExpenseItem => i.kind === 'expense')
+  const entries = data.items
+    .filter((item) => item.currency === currency)
+    .map((item) => {
+      const times = occurrencesIn(item, month);
+      return { item, times, amount: item.amount * times };
+    })
+    .filter((entry) => entry.times > 0)
     .sort(byAmountDesc);
+  const incomeItems = entries.filter((e): e is MonthEntry<IncomeItem> => e.item.kind === 'income');
+  const expenseItems = entries.filter(
+    (e): e is MonthEntry<ExpenseItem> => e.item.kind === 'expense',
+  );
   const credits = data.creditPayments
     .filter((p) => p.currency === currency && p.month === month)
     .sort(byAmountDesc);
@@ -171,10 +247,13 @@ function summarize(data: BudgetData, month: YearMonth, currency: Currency): Mont
   const income = sum(incomeItems.map((i) => i.amount));
   const creditPayments = sum(credits.map((c) => c.amount));
   const expenses = sum(expenseItems.map((i) => i.amount)) + creditPayments;
+  const repeatingExpenses = sum(
+    expenseItems.filter((e) => e.item.repeat !== 'none').map((e) => e.amount),
+  );
 
   const totals = new Map<ExpenseCategory, Cents>();
-  for (const item of expenseItems) {
-    totals.set(item.category, (totals.get(item.category) ?? 0) + item.amount);
+  for (const { item, amount } of expenseItems) {
+    totals.set(item.category, (totals.get(item.category) ?? 0) + amount);
   }
   if (creditPayments > 0) totals.set('credit', (totals.get('credit') ?? 0) + creditPayments);
   const byCategory = [...totals]
@@ -190,6 +269,8 @@ function summarize(data: BudgetData, month: YearMonth, currency: Currency): Mont
     left: income - expenses,
     spentRatio: income > 0 ? expenses / income : null,
     creditPayments,
+    fixedCharges: repeatingExpenses + creditPayments,
+    repeatingExpenses,
     byCategory,
     incomeItems,
     expenseItems,
@@ -223,6 +304,48 @@ export function monthlyTotals(
   });
 }
 
+interface Totals {
+  income: Cents;
+  expenses: Cents;
+  left: Cents;
+  months: number;
+}
+
+export interface YearSummary extends Totals {
+  year: number;
+  currency: Currency;
+  /** January up to the current month (the whole year once it is over). */
+  toDate: Totals;
+  /** The months still ahead: only what repeats and scheduled credit payments. */
+  projected: Totals;
+}
+
+function addUp(totals: readonly MonthTotals[]): Totals {
+  const income = sum(totals.map((t) => t.income));
+  const expenses = sum(totals.map((t) => t.expenses));
+  return { income, expenses, left: income - expenses, months: totals.length };
+}
+
+/** January to December of `year`: what came in, what went out and what is left at year end. */
+export function summarizeYear(
+  data: BudgetData,
+  currency: Currency,
+  year: number,
+  currentMonth: YearMonth,
+): YearSummary {
+  const yearText = String(year).padStart(4, '0');
+  const totals = monthlyTotals(data, currency, monthRange(`${yearText}-01`, `${yearText}-12`));
+  const past = totals.filter((t) => compareYearMonths(t.month, currentMonth) <= 0);
+  const ahead = totals.filter((t) => compareYearMonths(t.month, currentMonth) > 0);
+  return {
+    year,
+    currency,
+    ...addUp(totals),
+    toDate: addUp(past),
+    projected: addUp(ahead),
+  };
+}
+
 /** Earliest month with any income, expense or credit payment. */
 export function firstBudgetMonth(data: BudgetData): YearMonth | null {
   const months = [...data.items.map((i) => i.month), ...data.creditPayments.map((p) => p.month)];
@@ -239,6 +362,8 @@ export type BudgetIssueCode =
   | 'INVALID_CURRENCY'
   | 'INVALID_MONTH'
   | 'INVALID_CATEGORY'
+  | 'INVALID_REPEAT'
+  | 'INVALID_FIRST_DATE'
   | 'END_BEFORE_START'
   | 'END_WITHOUT_RECURRING';
 
@@ -253,8 +378,21 @@ export function validateBudgetItem(item: BudgetItemDraft): BudgetIssueCode[] {
     issues.push('INVALID_CATEGORY');
   }
   if (!isYearMonth(item.month)) issues.push('INVALID_MONTH');
+  if (!REPEATS.includes(item.repeat)) issues.push('INVALID_REPEAT');
+  // Weekly items need their first charge, inside their first month; the rest have none.
+  if (item.repeat === 'weekly') {
+    if (
+      item.firstDate === undefined ||
+      !isIsoDate(item.firstDate) ||
+      toYearMonth(item.firstDate) !== item.month
+    ) {
+      issues.push('INVALID_FIRST_DATE');
+    }
+  } else if (item.firstDate !== undefined) {
+    issues.push('INVALID_FIRST_DATE');
+  }
   if (item.endMonth !== undefined) {
-    if (!item.recurring) issues.push('END_WITHOUT_RECURRING');
+    if (item.repeat === 'none') issues.push('END_WITHOUT_RECURRING');
     else if (!isYearMonth(item.endMonth)) issues.push('INVALID_MONTH');
     else if (isYearMonth(item.month) && compareYearMonths(item.endMonth, item.month) < 0) {
       issues.push('END_BEFORE_START');

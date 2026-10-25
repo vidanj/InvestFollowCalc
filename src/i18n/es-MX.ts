@@ -1,6 +1,6 @@
 import type { BackupErrorCode } from '../backup/backup';
 import type { RepositoryErrorCode } from '../db/repository';
-import type { BudgetIssueCode, ExpenseCategory } from '../domain/budget';
+import type { BudgetIssueCode, ExpenseCategory, Repeat } from '../domain/budget';
 import type { CreditIssueCode, PaymentFrequency } from '../domain/credit';
 import type { YearMonth } from '../domain/months';
 import type { RangeKey } from '../domain/series';
@@ -125,6 +125,7 @@ const repositoryMessages: Record<RepositoryErrorCode, string> = {
   INVALID_BUDGET_ITEM: 'Revisa los datos del concepto.',
   CREDIT_NOT_FOUND: 'Este crédito ya no existe.',
   INVALID_CREDIT: 'Revisa los datos del crédito.',
+  INVALID_INVEST_PLAN: 'Revisa el porcentaje y la tasa para invertir.',
   CANNOT_DELETE_FIRST_PLAN:
     'El saldo con el que registraste el crédito no se puede quitar; edita el crédito o elimínalo.',
 };
@@ -136,6 +137,8 @@ const budgetIssueMessages: Record<BudgetIssueCode, string> = {
   INVALID_MONTH: 'Elige un mes válido.',
   INVALID_CATEGORY: 'Elige una categoría.',
   END_BEFORE_START: 'El mes final no puede ser anterior al mes inicial.',
+  INVALID_REPEAT: 'Elige cada cuándo se repite.',
+  INVALID_FIRST_DATE: 'Escribe la fecha del primer cargo; debe caer en el mes inicial.',
   END_WITHOUT_RECURRING: 'Solo un concepto que se repite puede tener mes final.',
 };
 
@@ -153,6 +156,13 @@ const creditIssueMessages: Record<CreditIssueCode, string> = {
   PAYMENT_TOO_LOW:
     'Con ese pago la deuda nunca bajaría: no alcanza a cubrir los intereses. Aumenta el pago.',
   TOO_MANY_PAYMENTS: 'Con ese pago tardarías más de 1,200 pagos en terminar. Aumenta el pago.',
+};
+
+const repeatLabels: Record<Repeat, string> = {
+  none: 'Solo una vez',
+  weekly: 'Cada semana',
+  monthly: 'Cada mes',
+  yearly: 'Cada año',
 };
 
 const categoryLabels: Record<ExpenseCategory, string> = {
@@ -309,6 +319,10 @@ export const strings = {
     spentOfIncome: (percent: string) => `${percent} de tus ingresos`,
     noIncome: 'Sin ingresos este mes',
     creditPayments: 'Pagos a créditos',
+    fixedTitle: (month: string) => `Ten disponible en tu cuenta para los cargos fijos de ${month}`,
+    fixedDetail: (repeating: string, credits: string) =>
+      `${repeating} de gastos que se repiten (suscripciones, servicios, renta…) y ${credits} de pagos de créditos.`,
+    fixedNote: 'No incluye los gastos de una sola vez.',
     meterLabel: 'Parte de tus ingresos que ya se va en gastos',
     meterValue: (percent: string) => `Gastas el ${percent} de lo que ganas`,
     meterOver: (percent: string) => `Gastas el ${percent} de lo que ganas: más de lo que entra`,
@@ -317,6 +331,8 @@ export const strings = {
     creditsTitle: 'Pagos de créditos',
     nothingYet: 'Nada todavía.',
     everyMonth: 'Cada mes',
+    everyYear: (month: string) => `Cada año en ${month}`,
+    everyWeek: (times: number, amount: string) => `Cada semana · ${times} × ${amount} este mes`,
     until: (month: string) => `hasta ${month}`,
     oneOff: 'Solo este mes',
     paymentNumbers: (numbers: number[], total: number) =>
@@ -351,10 +367,16 @@ export const strings = {
     amount: 'Monto',
     currency: 'Moneda',
     category: 'Categoría',
-    recurring: 'Se repite cada mes',
-    recurringHelp: 'Por ejemplo tu sueldo, la renta o una suscripción.',
+    repeat: '¿Cada cuándo?',
+    repeats: repeatLabels,
+    repeatHelp:
+      'Por ejemplo: tu sueldo o la renta cada mes, una suscripción anual cada año, la gasolina cada semana.',
     month: 'Mes',
     startMonth: 'Desde',
+    yearlyMonth: 'Mes del primer cargo (se repite ese mes cada año)',
+    firstDate: 'Fecha del primer cargo',
+    firstDateHelp:
+      'Se repite cada 7 días desde esta fecha: según el mes caen 4 o 5 cargos y se cuentan todos.',
     hasEnd: 'Termina en un mes',
     endMonth: 'Hasta',
     year: 'Año',
@@ -372,6 +394,70 @@ export const strings = {
     notFound: 'Este concepto ya no existe.',
     creditHint:
       'Para un crédito con intereses, mejor regístralo como crédito: así se calcula cada pago.',
+  },
+  year: {
+    title: (year: number) => `Tu año ${year}`,
+    subtitle:
+      'De enero a diciembre: lo registrado hasta este mes y la proyección de lo que se repite.',
+    income: 'Ingresos del año',
+    expenses: 'Gastos del año',
+    left: 'Te quedará al cierre del año',
+    overspent: 'Gastarás de más en el año',
+    leftPast: 'Te quedó en el año',
+    split: (toDate: string, month: string, projected: string) =>
+      `Llevas ${toDate} hasta ${month} y ${projected} en los meses que faltan (proyección).`,
+    allProjected:
+      'Todo el año es proyección: solo cuenta lo que se repite y los pagos de créditos.',
+    closed: 'Año terminado: todo es lo registrado.',
+  },
+  invest: {
+    title: 'Inversión sugerida',
+    canInvest: 'Puedes invertir al mes',
+    share: (percent: number) => `${percent}% de tus ingresos`,
+    capped: (percent: number, target: string) =>
+      `Es todo lo que te queda; el ${percent}% de tus ingresos serían ${target}.`,
+    nothingLeft: 'Este mes no te queda dinero para invertir.',
+    noIncome: 'Registra tus ingresos del mes para calcular cuánto invertir.',
+    projectionLine: (years: string, value: string, generated: string) =>
+      `En ${years} podría valer ${value} (${generated} generados).`,
+    rateLine: (rate: string, source: string) => `Con ${rate} anual (${source}).`,
+    noRate: (currency: string) =>
+      `Aún no hay rendimiento medido en ${currency}: elige una tasa para estimar cuánto generaría.`,
+    adjust: 'Ajustar y ver proyección',
+    monthLine: (month: string) => `Con los números de ${month}.`,
+    percentLabel: 'Porcentaje de tus ingresos para invertir',
+    percentHelp: 'Lo usual es entre 10% y 20%. Nunca se sugiere más de lo que te queda en el mes.',
+    invalidPercent: 'Escribe un número entero de 0 a 100.',
+    rateLabel: 'Rendimiento para estimar',
+    sourcePortfolio: (currency: string) => `Tu portafolio en ${currency}`,
+    sourceManual: 'Una tasa que yo escriba',
+    rateOption: (name: string, rate: string) => `${name}: ${rate} anual`,
+    noHistory: 'sin historial',
+    manualRate: 'Tasa anual esperada (%)',
+    manualRateHelp: 'Por ejemplo, la tasa de CETES o la que te da tu banco.',
+    shortPeriod:
+      'Ese rendimiento se midió en menos de 30 días: llevarlo a años puede exagerar mucho. Tómalo con cautela o escribe una tasa.',
+    negative: 'Con ese rendimiento la inversión perdería valor.',
+    horizonsTitle: 'Si lo inviertes cada mes',
+    years: (years: number) => (years === 1 ? '1 año' : `${years} años`),
+    horizon: 'Plazo',
+    contributed: 'Aportarías',
+    value: 'Valdría',
+    generated: 'Generaría',
+    horizonDetail: (contributed: string, generated: string) =>
+      `Aportarías ${contributed} · generaría ${generated}`,
+    chartTitle: 'Proyección',
+    chartSubtitle: 'Valor estimado de tu inversión contra lo que habrías aportado.',
+    chartValue: 'Valor estimado',
+    chartContributed: 'Aportado',
+    chartMonth: (month: number) =>
+      month % 12 === 0
+        ? `Año ${month / 12}`
+        : `Mes ${month} (${oneDecimal.format(month / 12)} años)`,
+    axisYear: (month: number) => `${month / 12} a`,
+    disclaimer:
+      'Es una estimación: supone que aportas al final de cada mes y que el rendimiento anual se mantiene, con interés compuesto mensual. Rendimientos pasados no garantizan los futuros.',
+    goToPortfolio: 'Registrar aportaciones en tus cuentas',
   },
   credit: {
     sectionTitle: 'Créditos',

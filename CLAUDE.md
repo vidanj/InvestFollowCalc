@@ -40,6 +40,10 @@ Plan completo y fases: [docs/plan.md](docs/plan.md).
   con fast-check en `src/domain/__tests__/budgetInvariants.test.ts`.
 - Interés de créditos: tasa anual / 360 × (365 / pagos por año, a 4 decimales), redondeado al
   centavo por periodo; IVA 16% aparte del pago fijo. Detalle en `docs/calculos.md`.
+- Repeticiones: semanal = cargos reales del mes cada 7 días desde `firstDate`; anual = completo en su
+  mes. Cargos fijos = gastos que se repiten + créditos. Inversión sugerida = % de ingresos topado en
+  lo que queda; proyección con TWR anualizado real, compuesto mensual, aportando a fin de mes
+  (`src/domain/investPlan.ts`).
 
 ## Datos, migraciones y respaldos
 
@@ -88,7 +92,7 @@ omisión), docs actualizadas si cambió comportamiento, y resumen al usuario. Si
 
 ## Estructura
 
-`src/domain` cálculo puro (inversiones, `budget.ts`, `credit.ts`, `months.ts`) · `src/db` Dexie · `src/backup` cifrado/export/import ·
+`src/domain` cálculo puro (inversiones, `budget.ts`, `credit.ts`, `investPlan.ts`, `months.ts`) · `src/db` Dexie · `src/backup` cifrado/export/import ·
 `src/features` pantallas · `src/components` UI y gráficas · `src/i18n` textos · `src/theme` tema ·
 `src/test` setup y helpers de Vitest · `e2e/` Playwright · `docs/` plan y explicación de cálculos.
 

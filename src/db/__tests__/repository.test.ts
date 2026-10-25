@@ -262,6 +262,7 @@ describe('whole dataset', () => {
       events: [],
       budgetItems: [],
       credits: [],
+      settings: {},
     });
     expect(await repo.getMeta('lastBackupAt')).toBeUndefined();
   });

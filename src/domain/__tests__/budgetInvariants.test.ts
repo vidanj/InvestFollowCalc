@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   creditMonthPayments,
   EXPENSE_CATEGORIES,
-  isActiveIn,
+  occurrencesIn,
+  REPEATS,
   summarizeMonth,
+  summarizeYear,
+  validateBudgetItem,
   type BudgetItem,
 } from '../budget';
 import {
@@ -136,10 +139,11 @@ const itemArb: fc.Arbitrary<BudgetItem> = fc
     currency: fc.constantFrom(...CURRENCIES),
     category: fc.constantFrom(...EXPENSE_CATEGORIES),
     start: fc.integer({ min: 0, max: 24 }),
-    recurring: fc.boolean(),
+    day: fc.integer({ min: 1, max: 28 }),
+    repeat: fc.constantFrom(...REPEATS),
     length: fc.option(fc.integer({ min: 0, max: 24 }), { nil: null }),
   })
-  .map(({ id, kind, amount, currency, category, start, recurring, length }) => {
+  .map(({ id, kind, amount, currency, category, start, day, repeat, length }) => {
     const month = addMonthsToYearMonth('2026-01', start);
     const base = {
       id,
@@ -147,8 +151,11 @@ const itemArb: fc.Arbitrary<BudgetItem> = fc
       amount,
       currency,
       month,
-      recurring,
-      ...(recurring && length !== null ? { endMonth: addMonthsToYearMonth(month, length) } : {}),
+      repeat,
+      ...(repeat === 'weekly' ? { firstDate: `${month}-${String(day).padStart(2, '0')}` } : {}),
+      ...(repeat !== 'none' && length !== null
+        ? { endMonth: addMonthsToYearMonth(month, length) }
+        : {}),
     };
     return kind === 'income' ? { ...base, kind } : { ...base, kind, category };
   });
@@ -166,20 +173,61 @@ describe('budget invariants', () => {
           const month = addMonthsToYearMonth('2026-01', offset);
 
           for (const summary of summarizeMonth(data, month)) {
-            const active = items.filter(
-              (i) => i.currency === summary.currency && isActiveIn(i, month),
-            );
             const sumOf = (kind: BudgetItem['kind']) =>
-              active.filter((i) => i.kind === kind).reduce((s, i) => s + i.amount, 0);
+              items
+                .filter((i) => i.currency === summary.currency && i.kind === kind)
+                .reduce((s, i) => s + i.amount * occurrencesIn(i, month), 0);
 
             expect(summary.income).toBe(sumOf('income'));
             expect(summary.expenses).toBe(sumOf('expense') + summary.creditPayments);
             expect(summary.left).toBe(summary.income - summary.expenses);
             expect(summary.byCategory.reduce((s, c) => s + c.amount, 0)).toBe(summary.expenses);
+            // Fixed charges = everything except one-off expenses.
+            const oneOffs = items
+              .filter(
+                (i) =>
+                  i.currency === summary.currency && i.kind === 'expense' && i.repeat === 'none',
+              )
+              .reduce((s, i) => s + i.amount * occurrencesIn(i, month), 0);
+            expect(summary.fixedCharges).toBe(summary.expenses - oneOffs);
           }
         },
       ),
       { numRuns: 200 },
+    );
+  });
+
+  it('generated items are valid, and a weekly item is charged 52 or 53 times a year', () => {
+    fc.assert(
+      fc.property(itemArb, fc.integer({ min: 0, max: 30 }), (item, offset) => {
+        expect(validateBudgetItem(item)).toEqual([]);
+        if (item.repeat !== 'weekly' || item.endMonth !== undefined) return;
+        const from = addMonthsToYearMonth(item.month, offset + 1);
+        const months = Array.from({ length: 12 }, (_, i) => addMonthsToYearMonth(from, i));
+        const charges = months.reduce((s, m) => s + occurrencesIn(item, m), 0);
+        expect([52, 53]).toContain(charges);
+      }),
+      { numRuns: 200 },
+    );
+  });
+
+  it('a year is the sum of its months, registered + projected', () => {
+    fc.assert(
+      fc.property(
+        fc.array(itemArb, { maxLength: 15 }),
+        fc.constantFrom(...CURRENCIES),
+        fc.integer({ min: 0, max: 30 }),
+        (items, currency, offset) => {
+          const data = { items, creditPayments: [] };
+          const current = addMonthsToYearMonth('2026-01', offset);
+          const year = summarizeYear(data, currency, 2027, current);
+          expect(year.toDate.income + year.projected.income).toBe(year.income);
+          expect(year.toDate.expenses + year.projected.expenses).toBe(year.expenses);
+          expect(year.left).toBe(year.income - year.expenses);
+          expect(year.toDate.months + year.projected.months).toBe(12);
+        },
+      ),
+      { numRuns: 100 },
     );
   });
 

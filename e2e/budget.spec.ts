@@ -63,6 +63,16 @@ test('tracks a month of income, expenses and a credit, and keeps it after reload
   await page.getByRole('link', { name: 'Volver' }).click();
   await expectMonthTotals(page);
   await expect(page.getByText('Pago 1 de 12')).toBeVisible();
+  // Only the credit repeats: that is what the account needs for automatic charges.
+  await expect(
+    page
+      .getByText('Ten disponible en tu cuenta para los cargos fijos', { exact: false })
+      .locator('..'),
+  ).toContainText('$1,000.00');
+  // 20% of the income; no investment history yet, so no return to project with.
+  const invest = page.getByRole('region', { name: 'Inversión sugerida' });
+  await expect(invest).toContainText('$6,000.00');
+  await expect(invest).toContainText('Aún no hay rendimiento medido en MXN');
   await expect(
     page.getByRole('figure').filter({ hasText: '¿En qué se va tu dinero?' }),
   ).toBeVisible();

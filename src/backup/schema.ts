@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { EXPENSE_CATEGORIES } from '../domain/budget';
-import { PAYMENT_FREQUENCIES } from '../domain/credit';
+import { EXPENSE_CATEGORIES, REPEATS } from '../domain/budget';
+import { MAX_RATE_BPS, PAYMENT_FREQUENCIES } from '../domain/credit';
 import { CURRENCIES } from '../domain/types';
 import { MAX_ITERATIONS } from './crypto';
 
@@ -71,7 +71,8 @@ const budgetItemBase = {
   amount: cents,
   currency: z.enum(CURRENCIES),
   month: yearMonth,
-  recurring: z.boolean(),
+  repeat: z.enum(REPEATS),
+  firstDate: isoDate.optional(),
   endMonth: yearMonth.optional(),
   ...timestamps,
 };
@@ -93,6 +94,20 @@ export const creditRecordSchema = z.object({
   ...timestamps,
 });
 
+const rateSourceSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('portfolio') }),
+  z.object({ kind: z.literal('account'), accountId: z.string().min(1) }),
+  z.object({ kind: z.literal('manual'), rateBps: z.number().int().min(0).max(MAX_RATE_BPS) }),
+]);
+
+export const investPlanSchema = z.object({
+  percent: z.number().int().min(0).max(100),
+  sources: z.object({
+    USD: rateSourceSchema.optional(),
+    MXN: rateSourceSchema.optional(),
+  }),
+});
+
 /** Decrypted content, current schema version. */
 export const payloadSchema = z.object({
   schemaVersion: z.number().int().positive(),
@@ -103,7 +118,7 @@ export const payloadSchema = z.object({
   /** Since schema v2. */
   budgetItems: z.array(budgetItemRecordSchema),
   credits: z.array(creditRecordSchema),
-  /** Reserved for synced settings; device-only preferences (theme) never go here. */
-  settings: z.object({}),
+  /** Synced settings (since v3); device-only preferences (theme) never go here. */
+  settings: z.object({ investPlan: investPlanSchema.optional() }),
 });
 export type BackupPayload = z.infer<typeof payloadSchema>;

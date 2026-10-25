@@ -1,5 +1,5 @@
 import type { DataSet } from '../db/schema';
-import { SCHEMA_VERSION } from '../db/schema';
+import { SCHEMA_VERSION, upgradeBudgetItemV2, type V2BudgetItem } from '../db/schema';
 import { validateBudgetItem } from '../domain/budget';
 import { validateCredit } from '../domain/credit';
 import { validateTimeline } from '../domain/validation';
@@ -43,6 +43,16 @@ export const MIN_PASSWORD_LENGTH = 8;
 const MIGRATIONS: Record<number, (payload: unknown) => unknown> = {
   // v2 added the monthly budget and credits.
   1: (payload) => ({ ...(payload as object), schemaVersion: 2, budgetItems: [], credits: [] }),
+  // v3: budget items say how often they repeat instead of only "monthly or not".
+  2: (payload) => {
+    const v2 = payload as { budgetItems?: unknown };
+    const items = Array.isArray(v2.budgetItems) ? (v2.budgetItems as V2BudgetItem[]) : [];
+    return {
+      ...(payload as object),
+      schemaVersion: 3,
+      budgetItems: items.map(upgradeBudgetItemV2),
+    };
+  },
 };
 
 function migrate(payload: unknown): unknown {
@@ -119,7 +129,7 @@ export async function createBackup(
     events: data.events,
     budgetItems: data.budgetItems,
     credits: data.credits,
-    settings: {},
+    settings: data.settings,
   };
   const plaintext = new TextEncoder().encode(JSON.stringify(payload));
   const envelope: BackupEnvelope = {
@@ -174,12 +184,13 @@ export async function readBackup(text: string, password: string): Promise<Backup
   const parsed = payloadSchema.safeParse(migrate(decoded));
   if (!parsed.success) throw new BackupError('INVALID_CONTENT', parsed.error.message);
 
-  const { accounts, events, budgetItems, credits, exportedAt, appVersion } = parsed.data;
+  const { accounts, events, budgetItems, credits, settings, exportedAt, appVersion } = parsed.data;
   const data: BackupData = {
     accounts,
     events,
     budgetItems,
     credits,
+    settings: settings.investPlan ? { investPlan: settings.investPlan } : {},
   };
   checkIntegrity(data);
   return { ...data, exportedAt, appVersion };

@@ -7,16 +7,19 @@ import { Notice } from '../../components/Notice';
 import { PageHeader } from '../../components/PageHeader';
 import { Stat } from '../../components/Stat';
 import { toneOf } from '../../components/tone';
-import { useBudgetItems, useCredits } from '../../db/hooks';
+import { useAccountsWithEvents, useBudgetItems, useCredits, useInvestPlan } from '../../db/hooks';
+import type { AccountWithEvents } from '../../db/repository';
 import type { CreditRecord } from '../../db/schema';
 import {
   firstBudgetMonth,
   monthlyTotals,
   summarizeMonth,
+  summarizeYear,
   type BudgetData,
-  type BudgetItem,
+  type MonthEntry,
   type MonthSummary,
 } from '../../domain/budget';
+import { investmentReturns, type InvestPlan } from '../../domain/investPlan';
 import { toIsoDate } from '../../domain/dates';
 import { formatMoney, formatSignedMoney } from '../../domain/money';
 import {
@@ -26,11 +29,13 @@ import {
   toYearMonth,
   type YearMonth,
 } from '../../domain/months';
-import { formatMonth, formatWholePercent, strings } from '../../i18n/es-MX';
+import { formatMonth, formatWholePercent, MONTH_NAMES, strings } from '../../i18n/es-MX';
 import { BackupReminder } from '../backup/BackupReminder';
 import { CreditCard } from '../credits/CreditCard';
 import { computeCreditSafely } from '../credits/creditHelpers';
+import { InvestCard } from '../invest/InvestCard';
 import { budgetDataSafely, budgetPath, monthParam } from './budgetHelpers';
+import { YearSummaryCard } from './YearSummaryCard';
 
 const t = strings.budget;
 const HISTORY_MONTHS = 12;
@@ -75,12 +80,14 @@ function MonthNavigator({ month, currentMonth }: { month: YearMonth; currentMont
   );
 }
 
-function itemDetail(item: BudgetItem): string {
-  const when = !item.recurring
-    ? t.oneOff
-    : item.endMonth
-      ? `${t.everyMonth}, ${t.until(formatMonth(item.endMonth))}`
-      : t.everyMonth;
+function entryDetail({ item, times }: MonthEntry): string {
+  const repeats = {
+    none: t.oneOff,
+    weekly: t.everyWeek(times, formatMoney(item.amount, item.currency)),
+    monthly: t.everyMonth,
+    yearly: t.everyYear(MONTH_NAMES[Number(item.month.slice(5)) - 1] ?? ''),
+  }[item.repeat];
+  const when = item.endMonth ? `${repeats}, ${t.until(formatMonth(item.endMonth))}` : repeats;
   return item.kind === 'expense' ? `${t.categories[item.category]} · ${when}` : when;
 }
 
@@ -158,15 +165,45 @@ function MonthStats({ summary }: { summary: MonthSummary }) {
   );
 }
 
+/** Reminder of the money the account needs for the month's automatic charges. */
+function FixedChargesReminder({ summary }: { summary: MonthSummary }) {
+  if (summary.fixedCharges === 0) return null;
+  const money = (cents: number) => formatMoney(cents, summary.currency);
+  return (
+    <Notice>
+      <p className="font-medium">{t.fixedTitle(formatMonth(summary.month))}</p>
+      <p className="text-2xl font-semibold">{money(summary.fixedCharges)}</p>
+      <p className="mt-1 text-xs">
+        {t.fixedDetail(money(summary.repeatingExpenses), money(summary.creditPayments))}{' '}
+        {t.fixedNote}
+      </p>
+    </Notice>
+  );
+}
+
 interface CurrencyBudgetProps {
   summary: MonthSummary;
   data: BudgetData;
   month: YearMonth;
   currentMonth: YearMonth;
+  accounts: AccountWithEvents[];
+  plan: InvestPlan;
 }
 
-function CurrencyBudget({ summary, data, month, currentMonth }: CurrencyBudgetProps) {
+function CurrencyBudget({
+  summary,
+  data,
+  month,
+  currentMonth,
+  accounts,
+  plan,
+}: CurrencyBudgetProps) {
   const { currency } = summary;
+  const returns = useMemo(() => investmentReturns(accounts, currency), [accounts, currency]);
+  const year = useMemo(
+    () => summarizeYear(data, currency, Number(month.slice(0, 4)), currentMonth),
+    [data, currency, month, currentMonth],
+  );
   const totals = useMemo(() => {
     const first = firstBudgetMonth(data) ?? month;
     const earliest = addMonthsToYearMonth(month, -(HISTORY_MONTHS - 1));
@@ -181,27 +218,30 @@ function CurrencyBudget({ summary, data, month, currentMonth }: CurrencyBudgetPr
         {strings.currencyNames[currency]}
       </h3>
       <MonthStats summary={summary} />
+      <FixedChargesReminder summary={summary} />
+      <InvestCard summary={summary} returns={returns} plan={plan} month={month} />
+      <YearSummaryCard summary={year} currentMonth={currentMonth} />
       <CategoryChart categories={summary.byCategory} total={summary.expenses} currency={currency} />
 
       <EntryList title={t.incomeTitle}>
-        {summary.incomeItems.map((item) => (
+        {summary.incomeItems.map((entry) => (
           <EntryRow
-            key={item.id}
-            to={editPath(item.id)}
-            name={item.name}
-            detail={itemDetail(item)}
-            amount={formatMoney(item.amount, currency)}
+            key={entry.item.id}
+            to={editPath(entry.item.id)}
+            name={entry.item.name}
+            detail={entryDetail(entry)}
+            amount={formatMoney(entry.amount, currency)}
           />
         ))}
       </EntryList>
       <EntryList title={t.expensesTitle}>
-        {summary.expenseItems.map((item) => (
+        {summary.expenseItems.map((entry) => (
           <EntryRow
-            key={item.id}
-            to={editPath(item.id)}
-            name={item.name}
-            detail={itemDetail(item)}
-            amount={formatMoney(item.amount, currency)}
+            key={entry.item.id}
+            to={editPath(entry.item.id)}
+            name={entry.item.name}
+            detail={entryDetail(entry)}
+            amount={formatMoney(entry.amount, currency)}
           />
         ))}
       </EntryList>
@@ -269,6 +309,8 @@ function CreditsSection({ credits }: { credits: CreditRecord[] }) {
 export function BudgetPage() {
   const items = useBudgetItems();
   const credits = useCredits();
+  const accounts = useAccountsWithEvents();
+  const plan = useInvestPlan();
   const [params] = useSearchParams();
   const currentMonth = toYearMonth(toIsoDate());
   const month = monthParam(params.get('month'), currentMonth);
@@ -278,7 +320,9 @@ export function BudgetPage() {
   );
   const summaries = useMemo(() => (data ? summarizeMonth(data, month) : []), [data, month]);
 
-  if (data === undefined || credits === undefined) return <p>{strings.common.loading}</p>;
+  if (data === undefined || credits === undefined || !accounts || !plan) {
+    return <p>{strings.common.loading}</p>;
+  }
 
   return (
     <>
@@ -314,6 +358,8 @@ export function BudgetPage() {
                 data={data}
                 month={month}
                 currentMonth={currentMonth}
+                accounts={accounts}
+                plan={plan}
               />
             ))}
           </div>

@@ -17,6 +17,9 @@ const LeftoverChartImpl = lazy(() =>
 const CategoryChartImpl = lazy(() =>
   import('./CategoryChart').then((m) => ({ default: m.CategoryChart })),
 );
+const ProjectionChartImpl = lazy(() =>
+  import('./ProjectionChart').then((m) => ({ default: m.ProjectionChart })),
+);
 const CreditBalanceChartImpl = lazy(() =>
   import('./CreditBalanceChart').then((m) => ({ default: m.CreditBalanceChart })),
 );
@@ -83,6 +86,14 @@ export function CreditBalanceChart(props: ComponentProps<typeof CreditBalanceCha
   return (
     <Suspense fallback={<ChartPlaceholder />}>
       <CreditBalanceChartImpl {...props} />
+    </Suspense>
+  );
+}
+
+export function ProjectionChart(props: ComponentProps<typeof ProjectionChartImpl>) {
+  return (
+    <Suspense fallback={<ChartPlaceholder />}>
+      <ProjectionChartImpl {...props} />
     </Suspense>
   );
 }

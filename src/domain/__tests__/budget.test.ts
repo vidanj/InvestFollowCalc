@@ -6,7 +6,10 @@ import {
   firstBudgetMonth,
   isActiveIn,
   monthlyTotals,
+  occurrencesIn,
+  startingIn,
   summarizeMonth,
+  summarizeYear,
   validateBudgetItem,
   type BudgetData,
   type BudgetItem,
@@ -23,7 +26,7 @@ const income = (id: string, units: number, extra: Partial<IncomeItem> = {}): Inc
   amount: cents(units),
   currency: 'MXN',
   month: '2026-01',
-  recurring: true,
+  repeat: 'monthly',
   ...extra,
 });
 
@@ -40,7 +43,7 @@ const expense = (
   currency: 'MXN',
   category,
   month: '2026-01',
-  recurring: true,
+  repeat: 'monthly',
   ...extra,
 });
 
@@ -67,16 +70,16 @@ const loan: Credit = {
 
 const items: BudgetItem[] = [
   income('Sueldo', 30_000),
-  income('Bono', 5_000, { month: '2026-10', recurring: false }),
+  income('Bono', 5_000, { month: '2026-10', repeat: 'none' }),
   expense('Renta', 8_000, 'housing'),
   expense('Streaming', 299, 'subscriptions', { month: '2026-03', endMonth: '2026-11' }),
-  expense('Café', 85.5, 'small', { month: '2026-10', recurring: false }),
+  expense('Café', 85.5, 'small', { month: '2026-10', repeat: 'none' }),
   expense('Hosting', 20, 'subscriptions', { currency: 'USD', month: '2026-06' }),
 ];
 
 const data: BudgetData = { items, creditPayments: creditMonthPayments([msi, loan]) };
 
-describe('recurring items', () => {
+describe('repeating items', () => {
   it('count from their first month until their end month', () => {
     const streaming = items[3]!;
     expect(isActiveIn(streaming, '2026-02')).toBe(false);
@@ -98,6 +101,66 @@ describe('recurring items', () => {
     expect(canSplitAt(items[3]!, '2026-12')).toBe(false); // no longer counts
     expect(canSplitAt(items[1]!, '2026-10')).toBe(false); // one-off
     expect(endBefore(rent, '2026-10')).toEqual({ ...rent, endMonth: '2026-09' });
+  });
+});
+
+describe('yearly items', () => {
+  const prime = expense('Prime', 1_099, 'subscriptions', { month: '2026-03', repeat: 'yearly' });
+
+  it('count the full amount in their month, every 12 months', () => {
+    expect(occurrencesIn(prime, '2026-03')).toBe(1);
+    expect(occurrencesIn(prime, '2026-04')).toBe(0);
+    expect(occurrencesIn(prime, '2027-02')).toBe(0);
+    expect(occurrencesIn(prime, '2027-03')).toBe(1);
+    expect(occurrencesIn(prime, '2025-03')).toBe(0);
+    expect(occurrencesIn({ ...prime, endMonth: '2027-12' }, '2028-03')).toBe(0);
+  });
+
+  it('can change from a later year on', () => {
+    expect(canSplitAt(prime, '2027-03')).toBe(true);
+    expect(canSplitAt(prime, '2027-04')).toBe(false); // not charged that month
+  });
+});
+
+describe('weekly items', () => {
+  // Fridays from Friday, October 2, 2026.
+  const gas = expense('Gasolina', 500, 'transport', {
+    month: '2026-10',
+    repeat: 'weekly',
+    firstDate: '2026-10-02',
+  });
+
+  it('count the real number of charges in each month', () => {
+    expect(occurrencesIn(gas, '2026-10')).toBe(5); // 2, 9, 16, 23, 30
+    expect(occurrencesIn(gas, '2026-11')).toBe(4); // 6, 13, 20, 27
+    expect(occurrencesIn(gas, '2027-01')).toBe(5); // 1, 8, 15, 22, 29
+    expect(occurrencesIn(gas, '2026-09')).toBe(0);
+    expect(occurrencesIn({ ...gas, endMonth: '2026-11' }, '2026-12')).toBe(0);
+  });
+
+  it('start counting on their first date, not the first of the month', () => {
+    const late = { ...gas, firstDate: '2026-10-30' };
+    expect(occurrencesIn(late, '2026-10')).toBe(1);
+    expect(occurrencesIn(late, '2026-11')).toBe(4); // 6, 13, 20, 27
+    // Charged on the last day of a month: still counted there.
+    expect(occurrencesIn({ ...gas, firstDate: '2026-10-31' }, '2026-10')).toBe(1);
+    expect(occurrencesIn({ ...gas, firstDate: undefined }, '2026-10')).toBe(0);
+  });
+
+  it('show the month total in the summary', () => {
+    const [mxn] = summarizeMonth({ items: [gas], creditPayments: [] }, '2026-10');
+    expect(mxn?.expenseItems[0]).toMatchObject({ times: 5, amount: cents(2_500) });
+    expect(mxn?.expenses).toBe(cents(2_500));
+  });
+
+  it('keep their weekday when changed from a later month on', () => {
+    // A stored item works as a draft: the id is just carried along.
+    expect(startingIn(gas, '2026-12')).toMatchObject({
+      month: '2026-12',
+      firstDate: '2026-12-04',
+    });
+    const monthly = { ...gas, repeat: 'monthly' as const, firstDate: undefined };
+    expect(startingIn(monthly, '2026-12')).toEqual({ ...monthly, month: '2026-12' });
   });
 });
 
@@ -151,14 +214,20 @@ describe('summarizeMonth', () => {
       creditPayments: cents(1_500),
     });
     expect(mxn?.spentRatio).toBeCloseTo(9_884.5 / 35_000, 10);
+    // Automatic charges: rent + streaming (repeat) + both credits; the coffee was a one-off.
+    expect(mxn).toMatchObject({
+      repeatingExpenses: cents(8_299),
+      fixedCharges: cents(8_299 + 1_500),
+    });
     expect(mxn?.byCategory).toEqual([
       { category: 'housing', amount: cents(8_000) },
       { category: 'credit', amount: cents(1_500) },
       { category: 'subscriptions', amount: cents(299) },
       { category: 'small', amount: cents(85.5) },
     ]);
-    expect(mxn?.incomeItems.map((i) => i.id)).toEqual(['Sueldo', 'Bono']);
-    expect(mxn?.expenseItems.map((i) => i.id)).toEqual(['Renta', 'Streaming', 'Café']);
+    expect(mxn?.incomeItems.map((e) => e.item.id)).toEqual(['Sueldo', 'Bono']);
+    expect(mxn?.expenseItems.map((e) => e.item.id)).toEqual(['Renta', 'Streaming', 'Café']);
+    expect(mxn?.expenseItems[1]).toMatchObject({ times: 1, amount: cents(299) });
     expect(mxn?.credits.map((c) => c.creditId)).toEqual(['tv', 'loan']);
   });
 
@@ -198,6 +267,35 @@ describe('history', () => {
   });
 });
 
+describe('summarizeYear', () => {
+  it('adds up January to December, split at the current month', () => {
+    const year = summarizeYear(data, 'MXN', 2026, '2026-10');
+    // Income: 30,000 × 12 + 5,000 bonus. Expenses: rent 8,000 × 12, streaming 299 × 9 (Mar–Nov),
+    // coffee 85.50, MSI 1,000 × 3 (Oct–Dec), loan 500 (Oct) + 1,000 (Nov) + 1,000 (Dec).
+    const expenses = 96_000 + 2_691 + 85.5 + 3_000 + 2_500;
+    expect(year).toMatchObject({
+      year: 2026,
+      currency: 'MXN',
+      income: cents(365_000),
+      expenses: cents(expenses),
+      left: cents(365_000 - expenses),
+      months: 12,
+    });
+    expect(year.toDate).toMatchObject({ income: cents(305_000), months: 10 });
+    expect(year.projected).toMatchObject({
+      income: cents(60_000),
+      expenses: cents(16_000 + 299 + 2_000 + 2_000),
+      months: 2,
+    });
+    expect(year.toDate.left + year.projected.left).toBe(year.left);
+  });
+
+  it('is all projection for a future year and all registered for a past one', () => {
+    expect(summarizeYear(data, 'MXN', 2027, '2026-10').toDate.months).toBe(0);
+    expect(summarizeYear(data, 'MXN', 2025, '2026-10').projected.months).toBe(0);
+  });
+});
+
 describe('validateBudgetItem', () => {
   // Validation ignores the id: a stored item is checked the same way as a draft.
   const draft = expense('Renta', 8_000, 'housing');
@@ -221,8 +319,17 @@ describe('validateBudgetItem', () => {
     expect(validateBudgetItem({ ...draft, month: '2026-13' })).toEqual(['INVALID_MONTH']);
     expect(validateBudgetItem({ ...draft, endMonth: '2026' })).toEqual(['INVALID_MONTH']);
     expect(validateBudgetItem({ ...draft, endMonth: '2025-12' })).toEqual(['END_BEFORE_START']);
-    expect(validateBudgetItem({ ...draft, recurring: false, endMonth: '2026-05' })).toEqual([
+    expect(validateBudgetItem({ ...draft, repeat: 'none', endMonth: '2026-05' })).toEqual([
       'END_WITHOUT_RECURRING',
+    ]);
+    expect(validateBudgetItem({ ...draft, repeat: 'daily' as 'none' })).toEqual(['INVALID_REPEAT']);
+    expect(validateBudgetItem({ ...draft, repeat: 'weekly' })).toEqual(['INVALID_FIRST_DATE']);
+    expect(validateBudgetItem({ ...draft, repeat: 'weekly', firstDate: '2026-02-03' })).toEqual([
+      'INVALID_FIRST_DATE',
+    ]); // outside its first month (January)
+    expect(validateBudgetItem({ ...draft, repeat: 'weekly', firstDate: '2026-01-07' })).toEqual([]);
+    expect(validateBudgetItem({ ...draft, firstDate: '2026-01-07' })).toEqual([
+      'INVALID_FIRST_DATE',
     ]);
   });
 

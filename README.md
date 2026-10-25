@@ -44,6 +44,18 @@ gastas, en qué y **cuánto te queda**, con gráficas mes a mes.
 4. Si haces un pago extra o tu banco muestra otro saldo, usa **Actualizar saldo** y todo se recalcula
    desde tu próximo pago.
 
+Cada concepto puede repetirse **cada semana** (se cuentan los 4 o 5 cargos reales del mes), **cada
+mes** o **cada año** (una suscripción anual cuenta completa en su mes). Además, cada mes la app te
+muestra:
+
+- **Cargos fijos:** cuánto debes tener disponible en tu cuenta para los cargos automáticos del mes
+  (lo que se repite + pagos de créditos).
+- **Inversión sugerida:** un porcentaje de tus ingresos (20% por omisión), nunca más de lo que te
+  queda, y **cuánto generaría** si lo inviertes cada mes con el rendimiento real de tus inversiones
+  (o una tasa que tú escribas), a 1, 3, 5 y 10 años.
+- **Tu año:** cuánto ganas, gastas y **te quedará al cierre del año**, con lo registrado y la
+  proyección de los meses que faltan.
+
 Cómo se calcula cada pago: [docs/calculos.md](docs/calculos.md#créditos).
 
 ## Instalar la app

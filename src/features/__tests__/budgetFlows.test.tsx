@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import type { Repository } from '../../db/repository';
 import { minimumPayment, type CreditDraft } from '../../domain/credit';
 import { formatMoney } from '../../domain/money';
+import { occurrencesIn } from '../../domain/budget';
+import { formatSignedMoney } from '../../domain/money';
 import { addMonthsToYearMonth, toYearMonth } from '../../domain/months';
 import { formatMonth, strings } from '../../i18n/es-MX';
 import { createTestRepository, daysAgo, renderRoute } from '../../test/renderApp';
@@ -23,7 +25,7 @@ async function seedBudget(repository: Repository) {
     amount: 3_000_000,
     currency: 'MXN',
     month: addMonthsToYearMonth(thisMonth, -3),
-    recurring: true,
+    repeat: 'monthly',
   });
   return repository.addBudgetItem({
     kind: 'expense',
@@ -32,7 +34,7 @@ async function seedBudget(repository: Repository) {
     currency: 'MXN',
     category: 'housing',
     month: addMonthsToYearMonth(thisMonth, -3),
-    recurring: true,
+    repeat: 'monthly',
   });
 }
 
@@ -65,14 +67,14 @@ describe('monthly budget', () => {
     expect(await screen.findByRole('heading', { name: bi.newIncomeTitle })).toBeVisible();
     await user.type(screen.getByLabelText(bi.name), 'Sueldo');
     await user.type(screen.getByLabelText(bi.amount), '30,000');
-    expect(screen.getByLabelText(bi.recurring)).toBeChecked();
+    expect(screen.getByLabelText(bi.repeat)).toHaveValue('monthly');
     await user.click(screen.getByRole('button', { name: strings.common.save }));
 
     await user.click(await screen.findByRole('link', { name: b.addExpense }));
     await user.type(await screen.findByLabelText(bi.name), 'Café');
     await user.type(screen.getByLabelText(bi.amount), '85.50');
     await user.selectOptions(screen.getByLabelText(bi.category), b.categories.small);
-    expect(screen.getByLabelText(bi.recurring)).not.toBeChecked();
+    expect(screen.getByLabelText(bi.repeat)).toHaveValue('none');
     await user.click(screen.getByRole('button', { name: strings.common.save }));
 
     await screen.findByRole('heading', { name: b.title });
@@ -94,7 +96,7 @@ describe('monthly budget', () => {
       currency: 'MXN',
       category: 'other',
       month: thisMonth,
-      recurring: false,
+      repeat: 'none',
     });
     const { user } = renderRoute(`/budget?month=${thisMonth}`, repository);
 
@@ -258,5 +260,161 @@ describe('credits', () => {
   it('shows a missing credit as not found', async () => {
     renderRoute('/credits/nope');
     expect(await screen.findByRole('heading', { name: c.notFound })).toBeVisible();
+  });
+});
+
+describe('repeats, fixed charges and the year', () => {
+  it('adds a weekly expense and counts every charge of the month', async () => {
+    const { user, repository } = renderRoute(`/budget/items/new?kind=expense&month=${thisMonth}`);
+
+    await user.type(await screen.findByLabelText(bi.name), 'Gasolina');
+    await user.type(screen.getByLabelText(bi.amount), '500');
+    await user.selectOptions(screen.getByLabelText(bi.repeat), bi.repeats.weekly);
+    fireEvent.change(screen.getByLabelText(bi.firstDate), {
+      target: { value: `${thisMonth}-01` },
+    });
+    await user.click(screen.getByRole('button', { name: strings.common.save }));
+
+    await screen.findByRole('heading', { name: b.title });
+    const [gas] = await repository.listBudgetItems();
+    expect(gas).toMatchObject({ repeat: 'weekly', firstDate: `${thisMonth}-01` });
+    const times = occurrencesIn(gas!, thisMonth);
+    expect(times === 4 || times === 5).toBe(true);
+    expect(await screen.findByText(b.everyWeek(times, '$500.00'), { exact: false })).toBeVisible();
+    expect(within(stat(b.expenses)).getByText(formatMoney(times * 50_000, 'MXN'))).toBeVisible();
+  });
+
+  it('counts a yearly expense only in its month', async () => {
+    const repository = createTestRepository();
+    await seedBudget(repository);
+    await repository.addBudgetItem({
+      kind: 'expense',
+      name: 'Seguro del auto',
+      amount: 1_200_000,
+      currency: 'MXN',
+      category: 'transport',
+      month: addMonthsToYearMonth(thisMonth, -12),
+      repeat: 'yearly',
+    });
+    const { user } = renderRoute(`/budget?month=${thisMonth}`, repository);
+
+    expect(await screen.findByText('Seguro del auto')).toBeVisible();
+    await user.click(screen.getByRole('link', { name: b.nextMonth }));
+    await screen.findByRole('heading', {
+      name: formatMonth(addMonthsToYearMonth(thisMonth, 1)),
+    });
+    expect(screen.queryByText('Seguro del auto')).toBeNull();
+  });
+
+  it('reminds how much the account needs for the automatic charges of the month', async () => {
+    const repository = createTestRepository();
+    await seedBudget(repository);
+    await repository.addCredit(msi(`${thisMonth}-01`));
+    await repository.addBudgetItem({
+      kind: 'expense',
+      name: 'Regalo',
+      amount: 50_000,
+      currency: 'MXN',
+      category: 'other',
+      month: thisMonth,
+      repeat: 'none',
+    });
+    renderRoute(`/budget?month=${thisMonth}`, repository);
+
+    const title = await screen.findByText(b.fixedTitle(formatMonth(thisMonth)));
+    // Rent 8,000 + the credit's 1,000; the one-off gift is left out.
+    expect(within(title.parentElement!).getByText('$9,000.00')).toBeVisible();
+  });
+
+  it('shows what will be left when the year ends', async () => {
+    const repository = createTestRepository();
+    await seedBudget(repository);
+    renderRoute(`/budget?month=${thisMonth}`, repository);
+
+    const year = Number(thisMonth.slice(0, 4));
+    const section = (await screen.findByRole('heading', { name: strings.year.title(year) }))
+      .parentElement!.parentElement!;
+    // Salary and rent repeat all year from 3 months ago; earlier months of the year are empty.
+    const months = Math.min(12, 12 - Number(addMonthsToYearMonth(thisMonth, -3).slice(5)) + 1);
+    const left = formatSignedMoney(months * 2_200_000, 'MXN');
+    expect(within(section).getByText(left)).toBeVisible();
+  });
+});
+
+describe('suggested investment', () => {
+  async function seedInvestments(repository: Repository) {
+    await seedBudget(repository);
+    // An account that grew 1% in 30 days.
+    const account = await repository.createAccount({
+      name: 'Ahorro',
+      currency: 'MXN',
+      color: '#2a78d6',
+      initialBalance: 1_000_000,
+      initialDate: daysAgo(60),
+    });
+    await repository.addEvent(account.id, {
+      type: 'balance',
+      date: daysAgo(30),
+      balance: 1_010_000,
+    });
+  }
+
+  it('suggests 20% of the income and projects it with the real return', async () => {
+    const repository = createTestRepository();
+    await seedInvestments(repository);
+    renderRoute(`/budget?month=${thisMonth}`, repository);
+
+    const card = (await screen.findByRole('heading', { name: strings.invest.title }))
+      .parentElement!;
+    expect(within(card).getByText('$6,000.00')).toBeVisible();
+    expect(within(card).getByText(strings.invest.share(20))).toBeVisible();
+    expect(within(card).getByText(/En 5 años podría valer/)).toBeVisible();
+    expect(within(card).getByText(new RegExp(strings.invest.sourcePortfolio('MXN')))).toBeVisible();
+  });
+
+  it('adjusts the share and the rate, and keeps the choices', async () => {
+    const repository = createTestRepository();
+    await seedInvestments(repository);
+    const { user } = renderRoute(`/budget/invest?currency=MXN&month=${thisMonth}`, repository);
+
+    const percent = await screen.findByLabelText(strings.invest.percentLabel);
+    await user.clear(percent);
+    await user.type(percent, '10');
+    expect(within(stat(strings.invest.canInvest)).getByText('$3,000.00')).toBeVisible();
+
+    await user.selectOptions(screen.getByLabelText(strings.invest.rateLabel), 'manual');
+    await user.type(screen.getByLabelText(strings.invest.manualRate), '10');
+
+    // 3,000 a month at 10% for a year: 36,000 contributed.
+    const horizons = screen.getByRole('region', { name: strings.invest.horizonsTitle });
+    const [firstYear] = within(horizons).getAllByRole('listitem');
+    expect(firstYear).toHaveTextContent(strings.invest.years(1));
+    expect(firstYear).toHaveTextContent('Aportarías $36,000.00');
+    await waitFor(async () => {
+      expect(await repository.getInvestPlan()).toEqual({
+        percent: 10,
+        sources: { MXN: { kind: 'manual', rateBps: 1_000 } },
+      });
+    });
+  });
+
+  it('caps the suggestion at what is left', async () => {
+    const repository = createTestRepository();
+    await seedBudget(repository);
+    await repository.addBudgetItem({
+      kind: 'expense',
+      name: 'Colegiatura',
+      amount: 2_000_000,
+      currency: 'MXN',
+      category: 'other',
+      month: thisMonth,
+      repeat: 'none',
+    });
+    renderRoute(`/budget/invest?currency=MXN&month=${thisMonth}`, repository);
+
+    // 30,000 in, 28,000 out: 2,000 left, below the 6,000 target.
+    expect(await screen.findByText(strings.invest.capped(20, '$6,000.00'))).toBeVisible();
+    expect(within(stat(strings.invest.canInvest)).getByText('$2,000.00')).toBeVisible();
+    expect(screen.getByText(strings.invest.noRate('MXN'))).toBeVisible();
   });
 });

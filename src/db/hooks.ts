@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import type { InvestPlan } from '../domain/investPlan';
 import type { AccountWithEvents } from './repository';
 import { useRepository } from './repositoryContext';
 import type { AccountRecord, BudgetItemRecord, CreditRecord, EventRecord, MetaKey } from './schema';
@@ -50,4 +51,9 @@ export function useCredit(id: string): CreditRecord | null | undefined {
 export function useHasData(): boolean | undefined {
   const repository = useRepository();
   return useLiveQuery(() => repository.hasData(), [repository]);
+}
+
+export function useInvestPlan(): InvestPlan | undefined {
+  const repository = useRepository();
+  return useLiveQuery(() => repository.getInvestPlan(), [repository]);
 }

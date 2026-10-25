@@ -66,7 +66,7 @@ const budgetItems: BudgetItemRecord[] = [
     amount: 3_000_000,
     currency: 'MXN',
     month: '2026-10',
-    recurring: true,
+    repeat: 'monthly',
     ...stamp,
   },
   {
@@ -77,7 +77,7 @@ const budgetItems: BudgetItemRecord[] = [
     currency: 'MXN',
     category: 'subscriptions',
     month: '2026-10',
-    recurring: true,
+    repeat: 'monthly',
     endMonth: '2027-03',
     ...stamp,
   },
@@ -95,7 +95,14 @@ const credits: CreditRecord[] = [
     ...stamp,
   },
 ];
-const data: BackupData = { accounts: [account], events, budgetItems, credits };
+const investPlan = { percent: 15, sources: { MXN: { kind: 'manual' as const, rateBps: 1_050 } } };
+const data: BackupData = {
+  accounts: [account],
+  events,
+  budgetItems,
+  credits,
+  settings: { investPlan },
+};
 
 async function expectBackupError(promise: Promise<unknown>, code: string) {
   const error: unknown = await promise.then(
@@ -124,7 +131,7 @@ const validPayload = () => ({
   events,
   budgetItems,
   credits,
-  settings: {},
+  settings: { investPlan },
 });
 
 describe('createBackup / readBackup', () => {
@@ -137,6 +144,7 @@ describe('createBackup / readBackup', () => {
     expect(contents.events).toEqual(data.events);
     expect(contents.budgetItems).toEqual(data.budgetItems);
     expect(contents.credits).toEqual(data.credits);
+    expect(contents.settings).toEqual({ investPlan });
     expect(contents.exportedAt).toBe(FAST.now);
     expect(contents.appVersion).toBe('0.1.0');
   });
@@ -206,6 +214,26 @@ describe('createBackup / readBackup', () => {
     expect(contents.credits).toEqual([]);
   });
 
+  it('imports backups from version 2, whose budget items were only monthly or one-off', async () => {
+    const toV2 = ({ repeat, ...item }: (typeof budgetItems)[number]) => ({
+      ...item,
+      recurring: repeat === 'monthly',
+    });
+    const v2 = {
+      ...validPayload(),
+      schemaVersion: 2,
+      budgetItems: [
+        toV2(budgetItems[0]!),
+        toV2({ ...budgetItems[1]!, repeat: 'none', endMonth: undefined }),
+      ],
+      settings: {},
+    };
+    const contents = await readBackup(await fileWithPayload(v2), PASSWORD);
+    expect(contents.budgetItems.map((i) => i.repeat)).toEqual(['monthly', 'none']);
+    expect(contents.budgetItems[0]).not.toHaveProperty('recurring');
+    expect(contents.settings).toEqual({});
+  });
+
   it('refuses backups from a newer app version', async () => {
     const { text } = await createBackup(data, PASSWORD, FAST);
     const newerFormat = JSON.stringify({ ...JSON.parse(text), formatVersion: 99 });
@@ -231,6 +259,15 @@ describe('createBackup / readBackup', () => {
       { ...validPayload(), budgetItems: [{ ...budgetItems[0], amount: 0 }] },
       { ...validPayload(), budgetItems: [{ ...budgetItems[1], category: 'pets' }] },
       { ...validPayload(), budgetItems: [{ ...budgetItems[1], endMonth: '2026-01' }] },
+      { ...validPayload(), budgetItems: [{ ...budgetItems[1], repeat: 'daily' }] },
+      { ...validPayload(), budgetItems: [{ ...budgetItems[1], repeat: 'weekly' }] }, // no first date
+      { ...validPayload(), settings: { investPlan: { percent: 120, sources: {} } } },
+      {
+        ...validPayload(),
+        settings: {
+          investPlan: { percent: 10, sources: { MXN: { kind: 'manual', rateBps: -1 } } },
+        },
+      },
       { ...validPayload(), credits: [...credits, credits[0]] },
       { ...validPayload(), credits: [{ ...credits[0], frequency: 'daily' }] },
       { ...validPayload(), credits: [{ ...credits[0], plans: [] }] },
@@ -272,7 +309,7 @@ describe('createBackup / readBackup', () => {
   });
 
   it('accepts an empty backup', async () => {
-    const empty = { accounts: [], events: [], budgetItems: [], credits: [] };
+    const empty = { accounts: [], events: [], budgetItems: [], credits: [], settings: {} };
     const { text } = await createBackup(empty, PASSWORD, FAST);
     expect(await readBackup(text, PASSWORD)).toMatchObject(empty);
   });

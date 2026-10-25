@@ -1,6 +1,13 @@
-import { canSplitAt, endBefore, validateBudgetItem, type BudgetItemDraft } from '../domain/budget';
+import {
+  canSplitAt,
+  endBefore,
+  startingIn,
+  validateBudgetItem,
+  type BudgetItemDraft,
+} from '../domain/budget';
 import { validateCredit, withPlan, type CreditDraft, type CreditPlan } from '../domain/credit';
 import { compareIsoDates } from '../domain/dates';
+import { DEFAULT_INVEST_PLAN, parseInvestPlan, type InvestPlan } from '../domain/investPlan';
 import type { YearMonth } from '../domain/months';
 import type { AccountEvent, Cents, Currency, EventDraft, IsoDate } from '../domain/types';
 import { nextSeq, sortEvents, validateCandidate, type ValidationIssue } from '../domain/validation';
@@ -26,7 +33,8 @@ export type RepositoryErrorCode =
   | 'INVALID_BUDGET_ITEM'
   | 'CREDIT_NOT_FOUND'
   | 'INVALID_CREDIT'
-  | 'CANNOT_DELETE_FIRST_PLAN';
+  | 'CANNOT_DELETE_FIRST_PLAN'
+  | 'INVALID_INVEST_PLAN';
 
 export class RepositoryError extends Error {
   readonly code: RepositoryErrorCode;
@@ -289,7 +297,7 @@ export class Repository {
       const item = { ...draft, name: draft.name.trim() };
 
       if (fromMonth !== undefined && canSplitAt(current, fromMonth)) {
-        const next = { ...item, month: fromMonth };
+        const next = startingIn(item, fromMonth);
         assertValidBudgetItem(next);
         const record: BudgetItemRecord = {
           ...next,
@@ -431,12 +439,16 @@ export class Repository {
 
   /** Everything the user stored, in a deterministic order (stable backup files). */
   async exportData(): Promise<DataSet> {
-    return this.db.transaction('r', this.dataTables, async () => ({
-      accounts: await this.listAccounts(),
-      events: sortEvents(await this.db.events.toArray()) as EventRecord[],
-      budgetItems: await this.listBudgetItems(),
-      credits: await this.listCredits(),
-    }));
+    return this.db.transaction('r', [...this.dataTables, this.db.meta], async () => {
+      const investPlan = await this.readInvestPlan();
+      return {
+        accounts: await this.listAccounts(),
+        events: sortEvents(await this.db.events.toArray()) as EventRecord[],
+        budgetItems: await this.listBudgetItems(),
+        credits: await this.listCredits(),
+        settings: investPlan ? { investPlan } : {},
+      };
+    });
   }
 
   /** Whether there is anything worth backing up. */
@@ -458,6 +470,14 @@ export class Repository {
       await this.db.events.bulkAdd(data.events);
       await this.db.budgetItems.bulkAdd(data.budgetItems);
       await this.db.credits.bulkAdd(data.credits);
+      if (data.settings.investPlan) {
+        await this.db.meta.put({
+          key: 'investPlan',
+          value: JSON.stringify(data.settings.investPlan),
+        });
+      } else {
+        await this.db.meta.delete('investPlan');
+      }
       const now = this.clock.now();
       await this.touch(now);
       await this.db.meta.put({ key: 'lastBackupAt', value: now });
@@ -473,6 +493,35 @@ export class Repository {
 
   async markBackedUp(): Promise<void> {
     await this.db.meta.put({ key: 'lastBackupAt', value: this.clock.now() });
+  }
+
+  // --- Investment plan ---
+
+  /** The stored plan, or `undefined` when the user never changed the defaults. */
+  private async readInvestPlan(): Promise<InvestPlan | undefined> {
+    const stored = await this.getMeta('investPlan');
+    if (stored === undefined) return undefined;
+    try {
+      return parseInvestPlan(JSON.parse(stored));
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The suggested-investment choices (defaults when never set). */
+  async getInvestPlan(): Promise<InvestPlan> {
+    return (await this.readInvestPlan()) ?? DEFAULT_INVEST_PLAN;
+  }
+
+  async setInvestPlan(plan: InvestPlan): Promise<void> {
+    // Only what parses back unchanged is valid.
+    if (JSON.stringify(parseInvestPlan(plan)) !== JSON.stringify(plan)) {
+      throw new RepositoryError('INVALID_INVEST_PLAN');
+    }
+    await this.db.transaction('rw', this.db.meta, async () => {
+      await this.db.meta.put({ key: 'investPlan', value: JSON.stringify(plan) });
+      await this.touch(this.clock.now());
+    });
   }
 
   // --- Meta ---

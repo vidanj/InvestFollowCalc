@@ -32,7 +32,7 @@ const rent: BudgetItemDraft = {
   currency: 'MXN',
   category: 'housing',
   month: '2026-01',
-  recurring: true,
+  repeat: 'monthly',
 };
 
 const loan: CreditDraft = {
@@ -71,7 +71,7 @@ describe('budget items', () => {
     const item = await repo.addBudgetItem(rent);
     const next = await repo.updateBudgetItem(item.id, { ...rent, amount: 900_000 }, '2026-10');
 
-    expect(next).toMatchObject({ month: '2026-10', amount: 900_000, recurring: true });
+    expect(next).toMatchObject({ month: '2026-10', amount: 900_000, repeat: 'monthly' });
     expect(next.id).not.toBe(item.id);
     expect(await repo.getBudgetItem(item.id)).toMatchObject({
       amount: 800_000,
@@ -105,6 +105,56 @@ describe('budget items', () => {
     );
     // Nothing changed: the split happens only after validating.
     expect(await repo.listBudgetItems()).toEqual([item]);
+  });
+});
+
+describe('weekly items', () => {
+  it('keep their weekday when changed from a later month on', async () => {
+    const gas = await repo.addBudgetItem({
+      ...rent,
+      name: 'Gasolina',
+      category: 'transport',
+      repeat: 'weekly',
+      month: '2026-10',
+      firstDate: '2026-10-02',
+    });
+    const next = await repo.updateBudgetItem(
+      gas.id,
+      {
+        ...rent,
+        name: 'Gasolina',
+        repeat: 'weekly',
+        month: '2026-10',
+        firstDate: '2026-10-02',
+        amount: 60_000,
+      },
+      '2026-12',
+    );
+    expect(next).toMatchObject({ month: '2026-12', firstDate: '2026-12-04', amount: 60_000 });
+    expect(await repo.getBudgetItem(gas.id)).toMatchObject({ endMonth: '2026-11' });
+  });
+});
+
+describe('investment plan', () => {
+  it('starts with the defaults and stores changes', async () => {
+    expect(await repo.getInvestPlan()).toEqual({ percent: 20, sources: {} });
+    const plan = { percent: 15, sources: { MXN: { kind: 'manual' as const, rateBps: 1_000 } } };
+    await repo.setInvestPlan(plan);
+    expect(await repo.getInvestPlan()).toEqual(plan);
+    expect(await repo.getMeta('lastDataChangeAt')).toBeDefined();
+  });
+
+  it('rejects invalid plans', async () => {
+    await expectRepositoryError(
+      repo.setInvestPlan({ percent: 150, sources: {} }),
+      'INVALID_INVEST_PLAN',
+    );
+    expect(await repo.getInvestPlan()).toEqual({ percent: 20, sources: {} });
+  });
+
+  it('ignores a corrupted stored plan', async () => {
+    await repo.db.meta.put({ key: 'investPlan', value: '{not json' });
+    expect(await repo.getInvestPlan()).toEqual({ percent: 20, sources: {} });
   });
 });
 
@@ -175,13 +225,19 @@ describe('whole dataset with budget and credits', () => {
     await repo.addCredit(loan);
     expect(await repo.hasData()).toBe(true);
 
+    await repo.setInvestPlan({ percent: 10, sources: {} });
     const exported = await repo.exportData();
     expect(exported.budgetItems).toHaveLength(1);
     expect(exported.credits).toHaveLength(1);
+    expect(exported.settings).toEqual({ investPlan: { percent: 10, sources: {} } });
 
     await repo.addCredit({ ...loan, name: 'Otro' });
     await repo.replaceAll(exported);
     expect(await repo.exportData()).toEqual(exported);
+
+    // A backup without a plan brings back the defaults.
+    await repo.replaceAll({ ...exported, settings: {} });
+    expect(await repo.getInvestPlan()).toEqual({ percent: 20, sources: {} });
 
     await repo.clearAll();
     expect(await repo.hasData()).toBe(false);
@@ -189,6 +245,26 @@ describe('whole dataset with budget and credits', () => {
 });
 
 describe('schema migration', () => {
+  it('upgrades version 2 budget items to say how often they repeat', async () => {
+    const name = `migration-v2-${crypto.randomUUID()}`;
+    const v2 = new Dexie(name);
+    v2.version(1).stores({ accounts: 'id', events: 'id, accountId', meta: 'key' });
+    v2.version(2).stores({ budgetItems: 'id', credits: 'id' });
+    await v2.table('budgetItems').bulkAdd([
+      { id: 'a', name: 'Renta', recurring: true },
+      { id: 'b', name: 'Café', recurring: false },
+    ]);
+    v2.close();
+
+    const db = createDb(name);
+    await db.open();
+    expect(await db.budgetItems.toArray()).toEqual([
+      { id: 'a', name: 'Renta', repeat: 'monthly' },
+      { id: 'b', name: 'Café', repeat: 'none' },
+    ]);
+    db.close();
+  });
+
   it('opens a version 1 database keeping its data, with empty budget and credit tables', async () => {
     const name = `migration-${crypto.randomUUID()}`;
     const v1 = new Dexie(name);

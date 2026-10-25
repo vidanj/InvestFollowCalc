@@ -14,14 +14,16 @@ import {
   valuesFromCredit,
 } from '../credits/creditForm';
 
+const TODAY = '2026-10-25';
+
 describe('budget item form', () => {
   it('builds an expense draft, trimming the name', () => {
     const values = {
-      ...emptyBudgetItemValues('expense', '2026-10'),
+      ...emptyBudgetItemValues('expense', '2026-10', TODAY),
       name: '  Netflix ',
       amount: '299',
       category: 'subscriptions' as const,
-      recurring: true,
+      repeat: 'monthly' as const,
       hasEnd: true,
       endMonth: '2027-03',
     };
@@ -34,18 +36,29 @@ describe('budget item form', () => {
         currency: 'MXN',
         category: 'subscriptions',
         month: '2026-10',
-        recurring: true,
+        repeat: 'monthly',
         endMonth: '2027-03',
       },
     });
   });
 
+  it('defaults: income repeats monthly, expenses once; weekly starts today in the current month', () => {
+    expect(emptyBudgetItemValues('income', '2026-10', TODAY)).toMatchObject({
+      repeat: 'monthly',
+      firstDate: TODAY,
+    });
+    expect(emptyBudgetItemValues('expense', '2026-12', TODAY)).toMatchObject({
+      repeat: 'none',
+      firstDate: '2026-12-01',
+    });
+  });
+
   it('drops the end month of one-off items and the category of incomes', () => {
     const income = {
-      ...emptyBudgetItemValues('income', '2026-10'),
+      ...emptyBudgetItemValues('income', '2026-10', TODAY),
       name: 'Bono',
       amount: '5,000',
-      recurring: false,
+      repeat: 'none' as const,
       hasEnd: true,
     };
     const parsed = parseBudgetItemForm(income);
@@ -55,15 +68,57 @@ describe('budget item form', () => {
       amount: 500_000,
       currency: 'MXN',
       month: '2026-10',
-      recurring: false,
+      repeat: 'none',
     });
+  });
+
+  it('weekly items take their month from the first charge', () => {
+    const parsed = parseBudgetItemForm({
+      ...emptyBudgetItemValues('expense', '2026-10', TODAY),
+      name: 'Gasolina',
+      amount: '500',
+      repeat: 'weekly',
+      firstDate: '2026-11-06',
+    });
+    expect(parsed.ok && parsed.draft).toMatchObject({
+      repeat: 'weekly',
+      month: '2026-11',
+      firstDate: '2026-11-06',
+    });
+    expect(
+      parseBudgetItemForm({
+        ...emptyBudgetItemValues('expense', '2026-10', TODAY),
+        name: 'Gasolina',
+        amount: '500',
+        repeat: 'weekly',
+        firstDate: '',
+      }),
+    ).toMatchObject({ ok: false, errors: { firstDate: strings.errors.invalidDate } });
+  });
+
+  it('a change from a later month on starts there and keeps the weekday', () => {
+    const values = {
+      ...emptyBudgetItemValues('expense', '2026-10', TODAY),
+      name: 'Gasolina',
+      amount: '600',
+      repeat: 'weekly' as const,
+      firstDate: '2026-10-02',
+      hasEnd: true,
+      endMonth: '2026-11',
+    };
+    expect(parseBudgetItemForm(values, '2026-12')).toMatchObject({
+      ok: false,
+      errors: { endMonth: strings.errors.budgetIssue('END_BEFORE_START') },
+    });
+    const parsed = parseBudgetItemForm({ ...values, hasEnd: false }, '2026-12');
+    expect(parsed.ok && parsed.draft).toMatchObject({ month: '2026-12', firstDate: '2026-12-04' });
   });
 
   it('reports field errors', () => {
     const parsed = parseBudgetItemForm({
-      ...emptyBudgetItemValues('expense', '2026-10'),
+      ...emptyBudgetItemValues('expense', '2026-10', TODAY),
       amount: '0',
-      recurring: true,
+      repeat: 'monthly',
       hasEnd: true,
       endMonth: '2026-09',
     });
@@ -76,12 +131,12 @@ describe('budget item form', () => {
       },
     });
     expect(
-      parseBudgetItemForm({ ...emptyBudgetItemValues('income', '2026-10'), name: 'x' }),
+      parseBudgetItemForm({ ...emptyBudgetItemValues('income', '2026-10', TODAY), name: 'x' }),
     ).toMatchObject({ ok: false, errors: { amount: strings.errors.required } });
   });
 
-  it('round-trips a stored item', () => {
-    const item = {
+  it('round-trips stored items', () => {
+    const rent = {
       id: 'i',
       kind: 'expense' as const,
       name: 'Renta',
@@ -89,13 +144,20 @@ describe('budget item form', () => {
       currency: 'USD' as const,
       category: 'housing' as const,
       month: '2026-01',
-      recurring: true,
-      endMonth: '2026-12',
+      repeat: 'yearly' as const,
+      endMonth: '2030-12',
     };
-    const { id, ...stored } = item;
-    const parsed = parseBudgetItemForm(valuesFromItem(item));
-    expect(parsed.ok && parsed.draft).toEqual(stored);
-    expect(id).toBe('i');
+    const gas = {
+      ...rent,
+      id: 'g',
+      repeat: 'weekly' as const,
+      month: '2026-10',
+      firstDate: '2026-10-02',
+    };
+    for (const { id, ...stored } of [rent, gas]) {
+      const parsed = parseBudgetItemForm(valuesFromItem({ id, ...stored }));
+      expect(parsed.ok && parsed.draft).toEqual(stored);
+    }
   });
 
   it('reads the month from the URL', () => {

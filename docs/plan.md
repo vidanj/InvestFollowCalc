@@ -275,6 +275,22 @@ Se reportaron al usuario al cerrar cada fase; cualquiera puede revertirse si no 
   - Esquema de Dexie v2 (tablas `budgetItems` y `credits`), `SCHEMA_VERSION = 2`; los respaldos v1 se
     migran con presupuesto y créditos vacíos. Sin dependencias nuevas.
 
+- **Fase 8 — Repeticiones, cargos fijos, año e inversión sugerida** (misma rama, decidido con el
+  usuario el 2026-10-25):
+  - Un concepto se repite **solo una vez, cada semana, cada mes o cada año** (ingresos y gastos).
+    Anual: el monto completo en su mes, cada 12 meses. Semanal: se cuentan los cargos reales del mes
+    (4 o 5) cada 7 días desde la fecha del primer cargo.
+  - **Cargos fijos del mes**: recordatorio de cuánto tener disponible en la cuenta = gastos que se
+    repiten + pagos de créditos (sin los de una sola vez).
+  - **Tu año**: ingresos, gastos y lo que quedará al cierre (enero a diciembre), separando lo
+    registrado de la proyección de los meses que faltan.
+  - **Inversión sugerida**: 20% de los ingresos del mes por omisión (ajustable), nunca más de lo que
+    queda. Se proyecta aportándola cada mes con el **TWR anualizado real** del portafolio de esa
+    moneda (o de una cuenta, o una tasa escrita), interés compuesto mensual, a 1, 3, 5 y 10 años.
+    Sólo sugiere y proyecta: no registra movimientos en las cuentas.
+  - Esquema v3 (`repeat` en lugar de `recurring`, `firstDate`), con migración de Dexie y de
+    respaldos; los ajustes de la inversión van en `meta` y en `settings` del respaldo.
+
 ---
 
 ## 9. Contenido de `CLAUDE.md` (se crea en la fase 0)

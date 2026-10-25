@@ -120,11 +120,22 @@ El código está en [src/domain/budget.ts](../src/domain/budget.ts).
 | **Gasto**   | concepto, monto, moneda, mes y **categoría** (lista fija, ver abajo)    |
 | **Crédito** | sus pagos entran solos como gastos del mes en que caen (ver "Créditos") |
 
-- Un concepto puede ser **de un solo mes** (un café, un regalo) o **repetirse cada mes** desde su
-  mes inicial (sueldo, renta, suscripciones), opcionalmente hasta un mes final.
+- Cada concepto dice **cada cuándo** se repite, desde su mes inicial y opcionalmente hasta un mes
+  final:
+
+  | Repetición       | Cuánto cuenta en cada mes                                                                |
+  | ---------------- | ---------------------------------------------------------------------------------------- |
+  | **Solo una vez** | el monto, sólo en su mes (un café, un regalo)                                            |
+  | **Cada semana**  | monto × las veces que cae en el mes, cada 7 días desde la fecha del primer cargo (4 o 5) |
+  | **Cada mes**     | el monto, todos los meses (sueldo, renta, suscripciones)                                 |
+  | **Cada año**     | el monto completo, sólo en su mes, cada 12 meses (una suscripción anual)                 |
+
+  Ejemplo semanal: gasolina de 500 cada viernes desde el 2 de octubre de 2026 → octubre cuenta 5
+  cargos (2, 9, 16, 23 y 30): 2,500; noviembre 4 cargos: 2,000.
+
 - Cambiar un concepto que se repite "desde este mes" no toca los meses anteriores: el concepto
-  original termina el mes anterior y la versión nueva empieza en el mes que se está viendo. Lo mismo
-  al "dejar de repetir desde este mes".
+  original termina el mes anterior y la versión nueva empieza en el mes que se está viendo (uno
+  semanal conserva su día de la semana). Lo mismo al "dejar de repetir desde este mes".
 - Categorías de gasto: vivienda, servicios, comida y súper, transporte, suscripciones, salud,
   entretenimiento, gastos hormiga, créditos y deudas, otros.
 
@@ -132,21 +143,78 @@ El código está en [src/domain/budget.ts](../src/domain/budget.ts).
 
 Por cada moneda (USD y MXN nunca se suman entre sí):
 
-| Dato                  | Fórmula                                                                 |
-| --------------------- | ----------------------------------------------------------------------- |
-| **Ingresos**          | suma de los ingresos que cuentan ese mes                                |
-| **Gastos**            | suma de los gastos que cuentan ese mes + pagos de créditos de ese mes   |
-| **Te queda**          | ingresos − gastos (negativo: gastaste más de lo que ganaste)            |
-| **% de tus ingresos** | gastos / ingresos ("—" sin ingresos)                                    |
-| **Por categoría**     | gastos agrupados por categoría; los pagos de créditos van en "créditos" |
-| **Pagos a créditos**  | lo que se paga ese mes a todos los créditos, con IVA                    |
+| Dato                  | Fórmula                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| **Ingresos**          | suma de los ingresos que cuentan ese mes                                              |
+| **Gastos**            | suma de los gastos que cuentan ese mes + pagos de créditos de ese mes                 |
+| **Te queda**          | ingresos − gastos (negativo: gastaste más de lo que ganaste)                          |
+| **% de tus ingresos** | gastos / ingresos ("—" sin ingresos)                                                  |
+| **Por categoría**     | gastos agrupados por categoría; los pagos de créditos van en "créditos"               |
+| **Pagos a créditos**  | lo que se paga ese mes a todos los créditos, con IVA                                  |
+| **Cargos fijos**      | gastos que se repiten (semanales, mensuales y anuales de ese mes) + pagos de créditos |
 
-Las pruebas verifican con cientos de presupuestos aleatorios que **te queda = ingresos − gastos** y
-que **la suma de las categorías = gastos**.
+**Cargos fijos** es el recordatorio de cuánto dinero tener disponible en la cuenta para los cargos
+automáticos del mes; no incluye los gastos de una sola vez.
+
+Las pruebas verifican con cientos de presupuestos aleatorios que **te queda = ingresos − gastos**,
+que **la suma de las categorías = gastos**, que **cargos fijos = gastos − gastos de una sola vez** y
+que un concepto semanal cae **52 o 53 veces** en cualquier periodo de 12 meses.
+
+## Tu año
+
+Para el año del mes que se está viendo (enero a diciembre), por moneda:
+
+```
+ingresos del año = suma de los ingresos de sus 12 meses
+gastos del año   = suma de los gastos de sus 12 meses (créditos incluidos)
+te quedará       = ingresos del año − gastos del año
+```
+
+Se separa en lo **registrado** (enero hasta el mes actual) y la **proyección** de los meses que
+faltan, que sólo cuenta lo que se repite y los pagos programados de los créditos. Las pruebas
+verifican que registrado + proyección = el año.
 
 La gráfica de evolución muestra hasta 12 meses, terminando en el mes que se está viendo. Los meses
 futuros son una **proyección**: sólo incluyen los conceptos que se repiten y los pagos programados de
 los créditos.
+
+## Inversión sugerida
+
+El código está en [src/domain/investPlan.ts](../src/domain/investPlan.ts).
+
+```
+meta     = ingresos del mes × porcentaje (20% por omisión), redondeado al centavo
+sugerido = el menor entre la meta y lo que te queda; nunca menos de 0
+```
+
+Si los gastos dejan menos que la meta, se sugiere sólo lo que queda (y se avisa). Sin ingresos o sin
+dinero que quede, no hay sugerencia.
+
+### Cuánto generaría
+
+Se proyecta invertir el monto sugerido **cada mes**, con el rendimiento anual que el usuario elige:
+
+- **Su portafolio** en esa moneda (por omisión): el **TWR anualizado** que calcula el Portafolio
+  con todas las cuentas activas de esa moneda (ver "Resumen de la cuenta" arriba).
+- **Una de sus cuentas**: el TWR anualizado de esa cuenta.
+- **Una tasa que escribe** (por ejemplo, la de CETES), cuando no hay historial o prefiere otra.
+
+Si el rendimiento se midió en menos de 30 días se avisa que proyectarlo a años puede exagerar mucho.
+
+```
+tasa mensual   = (1 + tasa anual)^(1/12) − 1          (el mismo interés compuesto del TWR anualizado)
+valor del mes  = redondear(valor anterior × (1 + tasa mensual)) + aportación
+aportado       = aportación × meses
+generaría      = valor − aportado                     (como la "ganancia" del portafolio)
+```
+
+Las aportaciones se hacen **al final de cada mes**. Se muestran 1, 3, 5 y 10 años. Ejemplo: 2,000 al
+mes a 10% anual → en 1 año se aportan 24,000 y valdría 25,081.07; en 10 años, 240,000 y 399,727.74.
+Las pruebas comparan el resultado con la fórmula cerrada de una anualidad
+`aportación × ((1 + r)^n − 1) / r`: la diferencia sólo viene del redondeo mensual al centavo.
+
+Es una estimación: supone que el rendimiento se mantiene; rendimientos pasados no garantizan los
+futuros.
 
 # Créditos
 

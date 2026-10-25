@@ -25,6 +25,7 @@ llevarlos a otro teléfono o computadora, o de recuperarlos si borras el navegad
 - Todas las cuentas (también las archivadas) y todos sus movimientos.
 - El presupuesto: todos los ingresos y gastos, de todos los meses.
 - Los créditos, con sus actualizaciones de saldo.
+- Tus ajustes de la inversión sugerida (porcentaje y rendimiento elegido).
 - No incluye preferencias del dispositivo, como el tema claro/oscuro.
 
 ## Seguridad
@@ -57,7 +58,7 @@ Al descifrar, `data` contiene:
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "appVersion": "1.1.0",
   "exportedAt": "2026-10-16T12:00:00.000Z",
   "accounts": [
@@ -92,7 +93,7 @@ Al descifrar, `data` contiene:
       "currency": "MXN",
       "category": "housing",
       "month": "2026-10",
-      "recurring": true,
+      "repeat": "monthly",
       "endMonth": "2027-09",
       "createdAt": "…",
       "updatedAt": "…"
@@ -112,12 +113,17 @@ Al descifrar, `data` contiene:
       "updatedAt": "…"
     }
   ],
-  "settings": {}
+  "settings": {
+    "investPlan": { "percent": 20, "sources": { "MXN": { "kind": "portfolio" } } }
+  }
 }
 ```
 
 Los montos están en **centavos**; la tasa, en puntos base (27.5% = 2750). Los ingresos no llevan
-`category`; `endMonth` sólo aparece en conceptos que se repiten y tienen mes final. En `plans`, el
+`category`. `repeat` es `none`, `weekly`, `monthly` o `yearly`; los semanales llevan además
+`firstDate` (fecha del primer cargo) y `endMonth` sólo aparece en conceptos que se repiten y tienen
+mes final. En `settings.investPlan`, `sources` dice por moneda qué rendimiento se usa:
+`portfolio`, `account` (con `accountId`) o `manual` (con `rateBps`); `settings` puede venir vacío. En `plans`, el
 primero es el crédito como se registró y los siguientes son las actualizaciones de saldo.
 
 ## Versiones
@@ -127,7 +133,8 @@ primero es el crédito como se registró y los siguientes son las actualizacione
   migran al importarlos (`MIGRATIONS` en [backup.ts](../src/backup/backup.ts)); los de una versión
   **más nueva** que la app se rechazan con un mensaje pidiendo actualizarla.
 
-| `schemaVersion` | Contenido                                                                     |
-| --------------- | ----------------------------------------------------------------------------- |
-| 1               | Cuentas y movimientos (v1.0.0).                                               |
-| 2               | Agrega `budgetItems` y `credits`. Un respaldo v1 se importa con ambos vacíos. |
+| `schemaVersion` | Contenido                                                                                           |
+| --------------- | --------------------------------------------------------------------------------------------------- |
+| 1               | Cuentas y movimientos (v1.0.0).                                                                     |
+| 2               | Agrega `budgetItems` y `credits`. Un respaldo v1 se importa con ambos vacíos.                       |
+| 3               | `recurring` (sí/no) pasa a `repeat` (`monthly`/`none`); agrega `firstDate` y `settings.investPlan`. |

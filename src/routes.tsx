@@ -21,6 +21,9 @@ const BudgetPage = lazy(() =>
 const BudgetItemFormPage = lazy(() =>
   import('./features/budget/BudgetItemFormPage').then((m) => ({ default: m.BudgetItemFormPage })),
 );
+const InvestPage = lazy(() =>
+  import('./features/invest/InvestPage').then((m) => ({ default: m.InvestPage })),
+);
 const CreditDetailPage = lazy(() =>
   import('./features/credits/CreditDetailPage').then((m) => ({ default: m.CreditDetailPage })),
 );
@@ -53,6 +56,14 @@ export function AppRoutes() {
           element={
             <Lazy>
               <BudgetPage />
+            </Lazy>
+          }
+        />
+        <Route
+          path="budget/invest"
+          element={
+            <Lazy>
+              <InvestPage />
             </Lazy>
           }
         />

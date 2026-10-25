@@ -210,6 +210,7 @@ describe('deleting all data', () => {
       events: [],
       budgetItems: [],
       credits: [],
+      settings: {},
     });
   });
 });

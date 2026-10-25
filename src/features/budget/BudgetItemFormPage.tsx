@@ -13,7 +13,7 @@ import { useBudgetItem } from '../../db/hooks';
 import { requestPersistentStorage } from '../../db/persistence';
 import { useRepository } from '../../db/repositoryContext';
 import type { BudgetItemRecord } from '../../db/schema';
-import { canSplitAt, EXPENSE_CATEGORIES } from '../../domain/budget';
+import { canSplitAt, EXPENSE_CATEGORIES, REPEATS, type Repeat } from '../../domain/budget';
 import { toIsoDate } from '../../domain/dates';
 import { toYearMonth, type YearMonth } from '../../domain/months';
 import { CURRENCIES } from '../../domain/types';
@@ -40,6 +40,14 @@ const categoryOptions = EXPENSE_CATEGORIES.map((value) => ({
   label: strings.budget.categories[value],
 }));
 
+const repeatOptions = REPEATS.map((value) => ({ value, label: t.repeats[value] }));
+
+const startLegend: Record<Exclude<Repeat, 'weekly'>, string> = {
+  none: t.month,
+  monthly: t.startMonth,
+  yearly: t.yearlyMonth,
+};
+
 type Scope = 'from' | 'all';
 
 interface BudgetItemFormProps {
@@ -52,9 +60,10 @@ interface BudgetItemFormProps {
 function BudgetItemForm({ viewMonth, kind, editing }: BudgetItemFormProps) {
   const repository = useRepository();
   const navigate = useNavigate();
-  const currentYear = Number(toYearMonth(toIsoDate()).slice(0, 4));
+  const today = toIsoDate();
+  const currentYear = Number(today.slice(0, 4));
   const [values, setValues] = useState<BudgetItemFormValues>(() =>
-    editing ? valuesFromItem(editing) : emptyBudgetItemValues(kind, viewMonth),
+    editing ? valuesFromItem(editing) : emptyBudgetItemValues(kind, viewMonth, today),
   );
   const splittable = editing !== undefined && canSplitAt(editing, viewMonth);
   const [scope, setScope] = useState<Scope>(splittable ? 'from' : 'all');
@@ -68,8 +77,8 @@ function BudgetItemForm({ viewMonth, kind, editing }: BudgetItemFormProps) {
   };
 
   // "From this month on": the changed version starts in the month being viewed.
-  const effective = splittable && scope === 'from' ? { ...values, month: viewMonth } : values;
-  const parsed = parseBudgetItemForm(effective);
+  const fromMonth = splittable && scope === 'from' ? viewMonth : undefined;
+  const parsed = parseBudgetItemForm(values, fromMonth);
   const errors = showErrors && !parsed.ok ? parsed.errors : {};
 
   const submit = async (event: FormEvent) => {
@@ -78,11 +87,7 @@ function BudgetItemForm({ viewMonth, kind, editing }: BudgetItemFormProps) {
     if (!parsed.ok) return;
     try {
       if (editing) {
-        await repository.updateBudgetItem(
-          editing.id,
-          parsed.draft,
-          splittable && scope === 'from' ? viewMonth : undefined,
-        );
+        await repository.updateBudgetItem(editing.id, parsed.draft, fromMonth);
       } else {
         await repository.addBudgetItem(parsed.draft);
         void requestPersistentStorage();
@@ -172,12 +177,13 @@ function BudgetItemForm({ viewMonth, kind, editing }: BudgetItemFormProps) {
           </Notice>
         )}
 
-        <CheckboxField
-          label={t.recurring}
-          help={t.recurringHelp}
-          checked={values.recurring}
-          onChange={(recurring) => {
-            set({ recurring });
+        <SelectField
+          label={t.repeat}
+          help={t.repeatHelp}
+          value={values.repeat}
+          options={repeatOptions}
+          onChange={(repeat) => {
+            set({ repeat });
           }}
         />
         {splittable && (
@@ -197,17 +203,29 @@ function BudgetItemForm({ viewMonth, kind, editing }: BudgetItemFormProps) {
             </p>
           </div>
         )}
-        {!(splittable && scope === 'from') && (
-          <MonthField
-            legend={values.recurring ? t.startMonth : t.month}
-            value={values.month}
-            currentYear={currentYear}
-            onChange={(month) => {
-              set({ month });
-            }}
-          />
-        )}
-        {values.recurring && (
+        {fromMonth === undefined &&
+          (values.repeat === 'weekly' ? (
+            <TextField
+              label={t.firstDate}
+              help={t.firstDateHelp}
+              type="date"
+              value={values.firstDate}
+              onChange={(e) => {
+                set({ firstDate: e.target.value });
+              }}
+              error={errors.firstDate}
+            />
+          ) : (
+            <MonthField
+              legend={startLegend[values.repeat]}
+              value={values.month}
+              currentYear={currentYear}
+              onChange={(month) => {
+                set({ month });
+              }}
+            />
+          ))}
+        {values.repeat !== 'none' && (
           <>
             <CheckboxField
               label={t.hasEnd}
@@ -266,7 +284,7 @@ function BudgetItemForm({ viewMonth, kind, editing }: BudgetItemFormProps) {
           ) : (
             <ConfirmButton
               label={t.delete}
-              warning={editing.recurring ? t.deleteWarning : t.deleteOneWarning}
+              warning={editing.repeat === 'none' ? t.deleteOneWarning : t.deleteWarning}
               onConfirm={() => {
                 void remove();
               }}
