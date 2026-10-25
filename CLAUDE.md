@@ -1,7 +1,8 @@
 # CLAUDE.md — InvestFollowCalc
 
 PWA (React + TypeScript + Vite) para seguir cuánto generan las inversiones del usuario, separando
-ganancias de aportaciones/retiros. Multi-cuenta, monedas USD y MXN. Datos 100% locales (IndexedDB).
+ganancias de aportaciones/retiros, y un presupuesto mensual (ingresos, gastos y créditos con su tabla
+de amortización). Multi-cuenta, monedas USD y MXN. Datos 100% locales (IndexedDB).
 Plan completo y fases: [docs/plan.md](docs/plan.md).
 
 ## Reglas principales (obligatorias)
@@ -34,6 +35,11 @@ Plan completo y fases: [docs/plan.md](docs/plan.md).
   pendientes). Verificada con fast-check en `src/domain/__tests__/invariants.test.ts`.
 - Cobertura mínima de `src/domain/`: 95% (umbral en `vite.config.ts`; `npm run test:coverage`).
 - Aportaciones/retiros nunca cuentan como ganancia/pérdida.
+- Presupuesto: `te queda = ingresos − gastos` y categorías = gastos; créditos: cada pago = capital +
+  interés + IVA, saldo final 0, `total = capital − ajustes de saldo + intereses + IVA`. Verificadas
+  con fast-check en `src/domain/__tests__/budgetInvariants.test.ts`.
+- Interés de créditos: tasa anual / 360 × (365 / pagos por año, a 4 decimales), redondeado al
+  centavo por periodo; IVA 16% aparte del pago fijo. Detalle en `docs/calculos.md`.
 
 ## Datos, migraciones y respaldos
 
@@ -82,7 +88,7 @@ omisión), docs actualizadas si cambió comportamiento, y resumen al usuario. Si
 
 ## Estructura
 
-`src/domain` cálculo puro · `src/db` Dexie · `src/backup` cifrado/export/import ·
+`src/domain` cálculo puro (inversiones, `budget.ts`, `credit.ts`, `months.ts`) · `src/db` Dexie · `src/backup` cifrado/export/import ·
 `src/features` pantallas · `src/components` UI y gráficas · `src/i18n` textos · `src/theme` tema ·
 `src/test` setup y helpers de Vitest · `e2e/` Playwright · `docs/` plan y explicación de cálculos.
 

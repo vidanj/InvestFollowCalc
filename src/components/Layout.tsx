@@ -21,6 +21,25 @@ function ChartIcon() {
   );
 }
 
+function WalletIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 7a2 2 0 0 1 2-2h12v4" />
+      <rect x="4" y="9" width="16" height="10" rx="2" />
+      <circle cx="16" cy="14" r="1" />
+    </svg>
+  );
+}
+
 function BackupIcon() {
   return (
     <svg
@@ -59,26 +78,38 @@ function SettingsIcon() {
   );
 }
 
-const NAV_ITEMS: { to: string; label: string; icon: ReactNode }[] = [
-  { to: '/', label: strings.nav.portfolio, icon: <ChartIcon /> },
-  { to: '/backup', label: strings.nav.backup, icon: <BackupIcon /> },
-  { to: '/settings', label: strings.nav.settings, icon: <SettingsIcon /> },
+interface NavItem {
+  to: string;
+  label: string;
+  icon: ReactNode;
+  /** Path prefixes of the section (the portfolio, at `/`, owns everything else). */
+  prefixes: string[];
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { to: '/', label: strings.nav.portfolio, icon: <ChartIcon />, prefixes: [] },
+  {
+    to: '/budget',
+    label: strings.nav.budget,
+    icon: <WalletIcon />,
+    prefixes: ['/budget', '/credits'],
+  },
+  { to: '/backup', label: strings.nav.backup, icon: <BackupIcon />, prefixes: ['/backup'] },
+  { to: '/settings', label: strings.nav.settings, icon: <SettingsIcon />, prefixes: ['/settings'] },
 ];
 
-// Account pages hang from the portfolio, so it stays active there.
-function isActive(to: string, pathname: string): boolean {
-  const sections = NAV_ITEMS.map((item) => item.to).filter((path) => path !== '/');
-  return to === '/'
-    ? !sections.some((section) => pathname.startsWith(section))
-    : pathname.startsWith(to);
+// Account pages hang from the portfolio, and credit pages from the budget.
+function isActive(item: NavItem, pathname: string): boolean {
+  const owns = (prefixes: string[]) => prefixes.some((prefix) => pathname.startsWith(prefix));
+  return item.to === '/' ? !NAV_ITEMS.some((other) => owns(other.prefixes)) : owns(item.prefixes);
 }
 
 function NavItems({ layout }: { layout: 'bar' | 'side' }) {
   const { pathname } = useLocation();
   return (
-    <ul className={layout === 'bar' ? 'grid grid-cols-3' : 'flex flex-col gap-1'}>
+    <ul className={layout === 'bar' ? 'grid grid-cols-4' : 'flex flex-col gap-1'}>
       {NAV_ITEMS.map((item) => {
-        const active = isActive(item.to, pathname);
+        const active = isActive(item, pathname);
         const tone = active
           ? 'text-teal-700 dark:text-teal-400'
           : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100';

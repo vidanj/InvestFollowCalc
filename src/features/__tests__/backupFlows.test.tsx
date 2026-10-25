@@ -129,7 +129,7 @@ describe('importing a backup', () => {
       .parentElement as HTMLElement;
     expect(within(preview).getByText(/1 cuenta y 2 movimientos/)).toBeVisible();
     expect(within(preview).getByText(/Desde el otro teléfono/)).toBeVisible();
-    expect(within(preview).getByText(t.replaceWarning(1))).toBeVisible();
+    expect(within(preview).getByText(t.replaceWarning(true))).toBeVisible();
     expect((await target.listAccounts()).map((a) => a.name)).toEqual(['Dato viejo']);
 
     await user.click(within(preview).getByRole('button', { name: t.replaceButton }));
@@ -205,6 +205,11 @@ describe('deleting all data', () => {
     await user.click(confirm);
 
     expect(await screen.findByText(s.deleted)).toBeVisible();
-    expect(await repository.exportData()).toEqual({ accounts: [], events: [] });
+    expect(await repository.exportData()).toEqual({
+      accounts: [],
+      events: [],
+      budgetItems: [],
+      credits: [],
+    });
   });
 });

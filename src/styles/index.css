@@ -39,6 +39,16 @@
   --account-6: #008300;
   --account-7: #6250d6;
   --account-8: #e34948;
+  /* Roles on the same validated slots, in their fixed order (they follow the theme). */
+  --series-income: var(--account-1);
+  --series-expense: var(--account-2);
+  --series-principal: var(--account-1);
+  --series-interest: var(--account-2);
+  --series-tax: var(--account-3);
+  --series-fees: var(--account-4);
+  /* Meter: accent fill on a lighter step of the same blue ramp. */
+  --meter-fill: var(--account-1);
+  --meter-track: #cde2fb;
 
   font-family:
     system-ui,
@@ -71,6 +81,7 @@
     --account-6: #008300;
     --account-7: #9085e9;
     --account-8: #e66767;
+    --meter-track: #184f95;
   }
 }
 
@@ -93,6 +104,7 @@
   --account-6: #008300;
   --account-7: #9085e9;
   --account-8: #e66767;
+  --meter-track: #184f95;
 }
 
 body {

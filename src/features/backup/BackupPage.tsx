@@ -7,7 +7,7 @@ import { ConfirmButton } from '../../components/ConfirmButton';
 import { Notice } from '../../components/Notice';
 import { PageHeader } from '../../components/PageHeader';
 import { TextField } from '../../components/TextField';
-import { useAccountsWithEvents, useMeta } from '../../db/hooks';
+import { useHasData, useMeta } from '../../db/hooks';
 import { useRepository } from '../../db/repositoryContext';
 import { toIsoDate } from '../../domain/dates';
 import { formatDate, strings } from '../../i18n/es-MX';
@@ -121,7 +121,7 @@ function ExportCard() {
   );
 }
 
-function ImportCard({ currentAccounts }: { currentAccounts: number }) {
+function ImportCard({ hasData }: { hasData: boolean }) {
   const repository = useRepository();
   const [file, setFile] = useState<File | null>(null);
   const [password, setPassword] = useState('');
@@ -210,6 +210,11 @@ function ImportCard({ currentAccounts }: { currentAccounts: number }) {
               formatTimestamp(contents.exportedAt),
             )}
           </p>
+          {contents.budgetItems.length + contents.credits.length > 0 && (
+            <p className="text-sm">
+              {t.previewBudget(contents.budgetItems.length, contents.credits.length)}
+            </p>
+          )}
           <ul className="list-disc pl-5 text-sm">
             {contents.accounts.map((account) => (
               <li key={account.id}>
@@ -218,8 +223,8 @@ function ImportCard({ currentAccounts }: { currentAccounts: number }) {
             ))}
           </ul>
           <Notice tone="warning">
-            <p>{t.replaceWarning(currentAccounts)}</p>
-            {currentAccounts > 0 && <p className="mt-1">{t.backupFirstHint}</p>}
+            <p>{t.replaceWarning(hasData)}</p>
+            {hasData && <p className="mt-1">{t.backupFirstHint}</p>}
           </Notice>
           <ConfirmButton
             label={t.replaceButton}
@@ -236,9 +241,9 @@ function ImportCard({ currentAccounts }: { currentAccounts: number }) {
 }
 
 export function BackupPage() {
-  const items = useAccountsWithEvents();
+  const hasData = useHasData();
   const lastBackupAt = useMeta('lastBackupAt');
-  if (!items || lastBackupAt === undefined) return <p>{strings.common.loading}</p>;
+  if (hasData === undefined || lastBackupAt === undefined) return <p>{strings.common.loading}</p>;
 
   return (
     <>
@@ -250,7 +255,7 @@ export function BackupPage() {
           {lastBackupAt ? t.lastBackup(formatTimestamp(lastBackupAt)) : t.neverBackedUp}
         </p>
         <ExportCard />
-        <ImportCard currentAccounts={items.length} />
+        <ImportCard hasData={hasData} />
       </div>
     </>
   );

@@ -251,6 +251,30 @@ Se reportaron al usuario al cerrar cada fase; cualquiera puede revertirse si no 
   - Versión 1.0.0 en `package.json` y `CHANGELOG.md`; el tag `v1.0.0` queda para cuando el usuario lo ordene.
   - Proceso de release y verificación manual en dispositivos en `docs/release.md`.
 
+- **Fase 7 — Presupuesto mensual y créditos** (rama de la sesión `claude/inspiring-dirac-kxkf0i`,
+  decidido con el usuario el 2026-10-25):
+  - Funcionalidad aparte de las inversiones: nueva sección **Presupuesto** en la navegación (Portafolio
+    · Presupuesto · Respaldo · Ajustes); las pantallas de créditos cuelgan de ella.
+  - Meses con ingresos y gastos; un concepto es de un solo mes o **se repite cada mes** (con mes final
+    opcional). Editar o dejar de repetir "desde este mes" conserva los meses anteriores.
+  - Categorías fijas de gasto (vivienda, servicios, comida, transporte, suscripciones, salud,
+    entretenimiento, gastos hormiga, créditos y deudas, otros).
+  - Cada concepto y cada crédito lleva su moneda; los totales del mes se separan por moneda.
+  - Créditos con **tasa anual fija e IVA opcional (16%) sobre los intereses**, pagos mensuales,
+    quincenales, catorcenales o semanales. El usuario da el número de pagos o el pago fijo.
+  - Regla de interés ajustada a una tabla de amortización real que dio el usuario: año de 360 días,
+    días del periodo = 365 / pagos por año a 4 decimales, interés redondeado al centavo por periodo,
+    **IVA aparte del pago fijo**. Reproduce esa tabla con diferencias de a lo más un centavo por
+    renglón; el último pago se ajusta para terminar en 0 (el banco deja −0.79). Los datos del
+    crédito del usuario no se guardan en el repositorio; las pruebas usan un ejemplo sintético.
+  - **Se sigue el plan**: cada pago se da por hecho en su fecha. Si algo cambia (pago extra, cargos),
+    el usuario **actualiza el saldo** y desde su próximo pago se recalcula; se muestra la diferencia
+    con lo que esperaba el plan. Los pagos extra no se agregan solos al presupuesto.
+  - Comisiones y seguros cobrados al inicio (opcional): sólo para el "costo total del crédito" y lo
+    "recibido"; no se calcula el CAT.
+  - Esquema de Dexie v2 (tablas `budgetItems` y `credits`), `SCHEMA_VERSION = 2`; los respaldos v1 se
+    migran con presupuesto y créditos vacíos. Sin dependencias nuevas.
+
 ---
 
 ## 9. Contenido de `CLAUDE.md` (se crea en la fase 0)

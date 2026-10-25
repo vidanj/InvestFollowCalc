@@ -3,6 +3,30 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); versiones con
 [SemVer](https://semver.org/lang/es/).
 
+## [Sin publicar]
+
+### Presupuesto mensual
+
+- Nueva sección **Presupuesto**: ingresos y gastos por mes, de un solo mes o que se repiten cada mes
+  (con mes final opcional); editar o dejar de repetir "desde este mes" conserva los meses anteriores.
+- Por mes y por moneda: ingresos, gastos, cuánto te queda y qué parte de tus ingresos se va en gastos.
+- Gráficas: gastos por categoría, ingresos contra gastos y lo que te queda en los últimos 12 meses
+  (los meses futuros son proyección), cada una con su vista de tabla.
+
+### Créditos
+
+- Créditos con tasa anual fija, IVA opcional sobre los intereses y pagos mensuales, quincenales,
+  catorcenales o semanales; se da el número de pagos o el pago fijo.
+- Tabla de amortización (pago fijo, capital, intereses, IVA, pago total, saldo), fecha en que se
+  termina de pagar, total a pagar, intereses + IVA, costo total con comisiones, pagado y pendiente.
+- "Actualizar saldo" recalcula desde el próximo pago y muestra la diferencia con el plan.
+- Sus pagos entran solos como gastos del mes en el presupuesto.
+
+### Datos
+
+- Esquema v2 (presupuesto y créditos); los respaldos de la versión 1 se siguen importando.
+- El recordatorio de respaldo y "Borrar todos los datos" consideran también el presupuesto.
+
 ## [1.0.0] — 2026-10-16
 
 Primera versión.

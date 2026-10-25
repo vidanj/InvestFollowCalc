@@ -12,16 +12,19 @@ llevarlos a otro teléfono o computadora, o de recuperarlos si borras el navegad
    - en teléfonos se abre el menú de compartir (Archivos, tu nube personal, correo a ti mismo…);
    - en otros navegadores se descarga.
 2. **Importar:** _Respaldo → Importar respaldo_. Eliges el archivo, escribes su contraseña y la app
-   muestra qué contiene (cuentas, movimientos y fecha). Sólo después de confirmar dos veces se
-   **reemplazan todos los datos** del dispositivo. Si algo falla, no se modifica nada.
-3. **Recordatorio:** el portafolio avisa si nunca has respaldado, o si cambiaste datos y tu último
-   respaldo tiene más de 30 días.
+   muestra qué contiene (cuentas, movimientos, presupuesto, créditos y fecha). Sólo después de
+   confirmar dos veces se **reemplazan todos los datos** del dispositivo. Si algo falla, no se
+   modifica nada.
+3. **Recordatorio:** el portafolio y el presupuesto avisan si nunca has respaldado, o si cambiaste
+   datos y tu último respaldo tiene más de 30 días.
 
 > Si olvidas la contraseña, **el respaldo no se puede recuperar**. Nadie (ni la app) puede abrirlo.
 
 ## Qué incluye
 
 - Todas las cuentas (también las archivadas) y todos sus movimientos.
+- El presupuesto: todos los ingresos y gastos, de todos los meses.
+- Los créditos, con sus actualizaciones de saldo.
 - No incluye preferencias del dispositivo, como el tema claro/oscuro.
 
 ## Seguridad
@@ -32,8 +35,9 @@ llevarlos a otro teléfono o computadora, o de recuperarlos si borras el navegad
 - GCM autentica el contenido: una contraseña equivocada y un archivo alterado fallan igual
   ("Contraseña incorrecta o archivo dañado").
 - Al importar se valida todo el contenido (tipos, ids únicos, que cada movimiento pertenezca a una
-  cuenta y que cada historial sea calculable) antes de tocar los datos actuales. Campos desconocidos
-  se descartan.
+  cuenta, que cada historial sea calculable y que cada concepto del presupuesto y cada crédito
+  cumplan las mismas reglas que al capturarlos) antes de tocar los datos actuales. Campos
+  desconocidos se descartan.
 
 ## Formato del archivo
 
@@ -53,8 +57,8 @@ Al descifrar, `data` contiene:
 
 ```json
 {
-  "schemaVersion": 1,
-  "appVersion": "0.1.0",
+  "schemaVersion": 2,
+  "appVersion": "1.1.0",
   "exportedAt": "2026-10-16T12:00:00.000Z",
   "accounts": [
     {
@@ -79,11 +83,42 @@ Al descifrar, `data` contiene:
       "updatedAt": "…"
     }
   ],
+  "budgetItems": [
+    {
+      "id": "…",
+      "kind": "expense",
+      "name": "Renta",
+      "amount": 800000,
+      "currency": "MXN",
+      "category": "housing",
+      "month": "2026-10",
+      "recurring": true,
+      "endMonth": "2027-09",
+      "createdAt": "…",
+      "updatedAt": "…"
+    }
+  ],
+  "credits": [
+    {
+      "id": "…",
+      "name": "Préstamo",
+      "currency": "MXN",
+      "annualRateBps": 2750,
+      "ivaOnInterest": true,
+      "frequency": "semimonthly",
+      "upfrontFees": 0,
+      "plans": [{ "firstPaymentDate": "2026-11-02", "balance": 10000000, "payment": 154912 }],
+      "createdAt": "…",
+      "updatedAt": "…"
+    }
+  ],
   "settings": {}
 }
 ```
 
-Los montos están en **centavos**.
+Los montos están en **centavos**; la tasa, en puntos base (27.5% = 2750). Los ingresos no llevan
+`category`; `endMonth` sólo aparece en conceptos que se repiten y tienen mes final. En `plans`, el
+primero es el crédito como se registró y los siguientes son las actualizaciones de saldo.
 
 ## Versiones
 
@@ -91,3 +126,8 @@ Los montos están en **centavos**.
 - `schemaVersion` sigue al esquema de la base de datos. Los respaldos de versiones anteriores se
   migran al importarlos (`MIGRATIONS` en [backup.ts](../src/backup/backup.ts)); los de una versión
   **más nueva** que la app se rechazan con un mensaje pidiendo actualizarla.
+
+| `schemaVersion` | Contenido                                                                     |
+| --------------- | ----------------------------------------------------------------------------- |
+| 1               | Cuentas y movimientos (v1.0.0).                                               |
+| 2               | Agrega `budgetItems` y `credits`. Un respaldo v1 se importa con ambos vacíos. |

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import type { AccountRecord, EventRecord } from '../../db/schema';
+import type { AccountRecord, BudgetItemRecord, CreditRecord, EventRecord } from '../../db/schema';
 import { SCHEMA_VERSION } from '../../db/schema';
 import { backupFileName, BackupError, createBackup, readBackup, type BackupData } from '../backup';
 import { decrypt, encrypt, fromBase64, PBKDF2_ITERATIONS, toBase64 } from '../crypto';
@@ -58,7 +58,44 @@ const events: EventRecord[] = [
     ...stamp,
   },
 ];
-const data: BackupData = { accounts: [account], events };
+const budgetItems: BudgetItemRecord[] = [
+  {
+    id: 'b1',
+    kind: 'income',
+    name: 'Sueldo',
+    amount: 3_000_000,
+    currency: 'MXN',
+    month: '2026-10',
+    recurring: true,
+    ...stamp,
+  },
+  {
+    id: 'b2',
+    kind: 'expense',
+    name: 'Streaming',
+    amount: 29_900,
+    currency: 'MXN',
+    category: 'subscriptions',
+    month: '2026-10',
+    recurring: true,
+    endMonth: '2027-03',
+    ...stamp,
+  },
+];
+const credits: CreditRecord[] = [
+  {
+    id: 'c1',
+    name: 'Préstamo',
+    currency: 'MXN',
+    annualRateBps: 2750,
+    ivaOnInterest: true,
+    frequency: 'semimonthly',
+    upfrontFees: 0,
+    plans: [{ firstPaymentDate: '2026-11-02', balance: 10_000_000, payment: 154_912 }],
+    ...stamp,
+  },
+];
+const data: BackupData = { accounts: [account], events, budgetItems, credits };
 
 async function expectBackupError(promise: Promise<unknown>, code: string) {
   const error: unknown = await promise.then(
@@ -85,6 +122,8 @@ const validPayload = () => ({
   exportedAt: FAST.now,
   accounts: [account],
   events,
+  budgetItems,
+  credits,
   settings: {},
 });
 
@@ -96,6 +135,8 @@ describe('createBackup / readBackup', () => {
     const contents = await readBackup(text, PASSWORD);
     expect(contents.accounts).toEqual(data.accounts);
     expect(contents.events).toEqual(data.events);
+    expect(contents.budgetItems).toEqual(data.budgetItems);
+    expect(contents.credits).toEqual(data.credits);
     expect(contents.exportedAt).toBe(FAST.now);
     expect(contents.appVersion).toBe('0.1.0');
   });
@@ -149,6 +190,22 @@ describe('createBackup / readBackup', () => {
     );
   });
 
+  it('imports backups from version 1, which had no budget or credits', async () => {
+    const v1 = {
+      schemaVersion: 1,
+      appVersion: '1.0.0',
+      exportedAt: FAST.now,
+      accounts: [account],
+      events,
+      settings: {},
+    };
+    const contents = await readBackup(await fileWithPayload(v1), PASSWORD);
+    expect(contents.accounts).toEqual([account]);
+    expect(contents.events).toEqual(events);
+    expect(contents.budgetItems).toEqual([]);
+    expect(contents.credits).toEqual([]);
+  });
+
   it('refuses backups from a newer app version', async () => {
     const { text } = await createBackup(data, PASSWORD, FAST);
     const newerFormat = JSON.stringify({ ...JSON.parse(text), formatVersion: 99 });
@@ -169,6 +226,24 @@ describe('createBackup / readBackup', () => {
       { ...validPayload(), events: events.slice(2) }, // timeline no longer starts with a balance
       { ...validPayload(), events: [] }, // account without its initial balance
       { ...validPayload(), events: [{ ...events[0], balance: 1.5 }] },
+      { ...validPayload(), budgetItems: undefined },
+      { ...validPayload(), budgetItems: [...budgetItems, budgetItems[0]] },
+      { ...validPayload(), budgetItems: [{ ...budgetItems[0], amount: 0 }] },
+      { ...validPayload(), budgetItems: [{ ...budgetItems[1], category: 'pets' }] },
+      { ...validPayload(), budgetItems: [{ ...budgetItems[1], endMonth: '2026-01' }] },
+      { ...validPayload(), credits: [...credits, credits[0]] },
+      { ...validPayload(), credits: [{ ...credits[0], frequency: 'daily' }] },
+      { ...validPayload(), credits: [{ ...credits[0], plans: [] }] },
+      // A payment that never lowers the debt would make the schedule endless.
+      {
+        ...validPayload(),
+        credits: [
+          {
+            ...credits[0],
+            plans: [{ firstPaymentDate: '2026-11-02', balance: 10_000_000, payment: 1 }],
+          },
+        ],
+      },
     ];
     for (const payload of cases) {
       await expectBackupError(
@@ -197,8 +272,9 @@ describe('createBackup / readBackup', () => {
   });
 
   it('accepts an empty backup', async () => {
-    const { text } = await createBackup({ accounts: [], events: [] }, PASSWORD, FAST);
-    expect(await readBackup(text, PASSWORD)).toMatchObject({ accounts: [], events: [] });
+    const empty = { accounts: [], events: [], budgetItems: [], credits: [] };
+    const { text } = await createBackup(empty, PASSWORD, FAST);
+    expect(await readBackup(text, PASSWORD)).toMatchObject(empty);
   });
 
   it('names files by export date', () => {

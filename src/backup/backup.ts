@@ -1,5 +1,7 @@
-import type { AccountRecord, EventRecord } from '../db/schema';
+import type { DataSet } from '../db/schema';
 import { SCHEMA_VERSION } from '../db/schema';
+import { validateBudgetItem } from '../domain/budget';
+import { validateCredit } from '../domain/credit';
 import { validateTimeline } from '../domain/validation';
 import { decrypt, DecryptionError, encrypt, PBKDF2_ITERATIONS } from './crypto';
 import {
@@ -25,10 +27,7 @@ export class BackupError extends Error {
   }
 }
 
-export interface BackupData {
-  accounts: AccountRecord[];
-  events: EventRecord[];
-}
+export type BackupData = DataSet;
 
 export interface BackupContents extends BackupData {
   exportedAt: string;
@@ -42,7 +41,8 @@ export const MIN_PASSWORD_LENGTH = 8;
  * whenever SCHEMA_VERSION goes up, so old backups always stay importable.
  */
 const MIGRATIONS: Record<number, (payload: unknown) => unknown> = {
-  // 1: (payload) => ({ ...payload, schemaVersion: 2, ... }),
+  // v2 added the monthly budget and credits.
+  1: (payload) => ({ ...(payload as object), schemaVersion: 2, budgetItems: [], credits: [] }),
 };
 
 function migrate(payload: unknown): unknown {
@@ -59,8 +59,15 @@ function migrate(payload: unknown): unknown {
   }
 }
 
-/** Checks what zod cannot: unique ids, events pointing at real accounts, computable timelines. */
-function checkIntegrity({ accounts, events }: BackupData): void {
+function hasDuplicates(records: readonly { id: string }[]): boolean {
+  return new Set(records.map((r) => r.id)).size !== records.length;
+}
+
+/**
+ * Checks what zod cannot: unique ids, events pointing at real accounts, computable timelines,
+ * and budget items and credits that the app itself would accept.
+ */
+function checkIntegrity({ accounts, events, budgetItems, credits }: BackupData): void {
   const accountIds = new Set(accounts.map((a) => a.id));
   if (accountIds.size !== accounts.length)
     throw new BackupError('INVALID_CONTENT', 'duplicate account id');
@@ -77,6 +84,12 @@ function checkIntegrity({ accounts, events }: BackupData): void {
     if (timeline.length === 0 || validateTimeline(timeline).length > 0) {
       throw new BackupError('INVALID_CONTENT', 'invalid account timeline');
     }
+  }
+  if (hasDuplicates(budgetItems) || budgetItems.some((i) => validateBudgetItem(i).length > 0)) {
+    throw new BackupError('INVALID_CONTENT', 'invalid budget item');
+  }
+  if (hasDuplicates(credits) || credits.some((c) => validateCredit(c).length > 0)) {
+    throw new BackupError('INVALID_CONTENT', 'invalid credit');
   }
 }
 
@@ -104,6 +117,8 @@ export async function createBackup(
     exportedAt: now,
     accounts: data.accounts,
     events: data.events,
+    budgetItems: data.budgetItems,
+    credits: data.credits,
     settings: {},
   };
   const plaintext = new TextEncoder().encode(JSON.stringify(payload));
@@ -159,8 +174,13 @@ export async function readBackup(text: string, password: string): Promise<Backup
   const parsed = payloadSchema.safeParse(migrate(decoded));
   if (!parsed.success) throw new BackupError('INVALID_CONTENT', parsed.error.message);
 
-  const { accounts, events, exportedAt, appVersion } = parsed.data;
-  const data = { accounts, events: events as EventRecord[] };
+  const { accounts, events, budgetItems, credits, exportedAt, appVersion } = parsed.data;
+  const data: BackupData = {
+    accounts,
+    events,
+    budgetItems,
+    credits,
+  };
   checkIntegrity(data);
   return { ...data, exportedAt, appVersion };
 }

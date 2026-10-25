@@ -65,3 +65,12 @@ const inputFormatter = new Intl.NumberFormat(LOCALE, {
 export function formatAmountInput(cents: Cents): string {
   return inputFormatter.format(cents / 100);
 }
+
+/** Formats an annual rate in basis points, unsigned: 2750 → "27.50%". */
+export function formatRate(basisPoints: number): string {
+  return new Intl.NumberFormat(LOCALE, {
+    style: 'percent',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(basisPoints / 10_000);
+}

@@ -1,6 +1,18 @@
+import { canSplitAt, endBefore, validateBudgetItem, type BudgetItemDraft } from '../domain/budget';
+import { validateCredit, withPlan, type CreditDraft, type CreditPlan } from '../domain/credit';
+import { compareIsoDates } from '../domain/dates';
+import type { YearMonth } from '../domain/months';
 import type { AccountEvent, Cents, Currency, EventDraft, IsoDate } from '../domain/types';
 import { nextSeq, sortEvents, validateCandidate, type ValidationIssue } from '../domain/validation';
-import type { AccountRecord, EventRecord, InvestDb, MetaKey } from './schema';
+import type {
+  AccountRecord,
+  BudgetItemRecord,
+  CreditRecord,
+  DataSet,
+  EventRecord,
+  InvestDb,
+  MetaKey,
+} from './schema';
 
 export const ACCOUNT_NAME_MAX_LENGTH = 60;
 
@@ -9,7 +21,12 @@ export type RepositoryErrorCode =
   | 'EVENT_NOT_FOUND'
   | 'INVALID_ACCOUNT'
   | 'INVALID_EVENT'
-  | 'CANNOT_DELETE_INITIAL';
+  | 'CANNOT_DELETE_INITIAL'
+  | 'BUDGET_ITEM_NOT_FOUND'
+  | 'INVALID_BUDGET_ITEM'
+  | 'CREDIT_NOT_FOUND'
+  | 'INVALID_CREDIT'
+  | 'CANNOT_DELETE_FIRST_PLAN';
 
 export class RepositoryError extends Error {
   readonly code: RepositoryErrorCode;
@@ -48,6 +65,17 @@ export interface AccountPatch {
 export interface AccountWithEvents {
   account: AccountRecord;
   events: EventRecord[];
+}
+
+const byCreation = (a: { createdAt: string }, b: { createdAt: string }) =>
+  a.createdAt.localeCompare(b.createdAt);
+
+function assertValidBudgetItem(draft: BudgetItemDraft): void {
+  if (validateBudgetItem(draft).length > 0) throw new RepositoryError('INVALID_BUDGET_ITEM');
+}
+
+function assertValidCredit(draft: CreditDraft): void {
+  if (validateCredit(draft).length > 0) throw new RepositoryError('INVALID_CREDIT');
 }
 
 function normalizeName(name: string): string {
@@ -218,38 +246,228 @@ export class Repository {
     });
   }
 
-  // --- Whole dataset (backups) ---
+  // --- Budget ---
 
-  /** Every account and movement, in a deterministic order (stable backup files). */
-  async exportData(): Promise<{ accounts: AccountRecord[]; events: EventRecord[] }> {
-    return this.db.transaction('r', this.db.accounts, this.db.events, async () => ({
-      accounts: await this.listAccounts(),
-      events: sortEvents(await this.db.events.toArray()) as EventRecord[],
-    }));
+  async listBudgetItems(): Promise<BudgetItemRecord[]> {
+    return (await this.db.budgetItems.toArray()).sort(byCreation);
+  }
+
+  async getBudgetItem(id: string): Promise<BudgetItemRecord | undefined> {
+    return this.db.budgetItems.get(id);
+  }
+
+  async addBudgetItem(draft: BudgetItemDraft): Promise<BudgetItemRecord> {
+    const item = { ...draft, name: draft.name.trim() };
+    assertValidBudgetItem(item);
+    const now = this.clock.now();
+    const record: BudgetItemRecord = {
+      ...item,
+      id: crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    await this.db.transaction('rw', this.db.budgetItems, this.db.meta, async () => {
+      await this.db.budgetItems.add(record);
+      await this.touch(now);
+    });
+    return record;
   }
 
   /**
-   * Replaces all accounts and movements with `data` in one transaction: either everything is
-   * replaced or nothing changes. The data was just read from a backup, so it counts as backed up.
+   * Replaces the item with `draft`. With `fromMonth`, a recurring item that started earlier keeps
+   * its past: it ends the month before, and the changed version starts in `fromMonth`.
    */
-  async replaceAll(data: { accounts: AccountRecord[]; events: EventRecord[] }): Promise<void> {
-    await this.db.transaction('rw', this.db.accounts, this.db.events, this.db.meta, async () => {
-      await this.db.accounts.clear();
-      await this.db.events.clear();
+  async updateBudgetItem(
+    id: string,
+    draft: BudgetItemDraft,
+    fromMonth?: YearMonth,
+  ): Promise<BudgetItemRecord> {
+    return this.db.transaction('rw', this.db.budgetItems, this.db.meta, async () => {
+      const current = await this.db.budgetItems.get(id);
+      if (!current) throw new RepositoryError('BUDGET_ITEM_NOT_FOUND');
+      const now = this.clock.now();
+      const item = { ...draft, name: draft.name.trim() };
+
+      if (fromMonth !== undefined && canSplitAt(current, fromMonth)) {
+        const next = { ...item, month: fromMonth };
+        assertValidBudgetItem(next);
+        const record: BudgetItemRecord = {
+          ...next,
+          id: crypto.randomUUID(),
+          createdAt: now,
+          updatedAt: now,
+        };
+        await this.db.budgetItems.put({ ...endBefore(current, fromMonth), updatedAt: now });
+        await this.db.budgetItems.add(record);
+        await this.touch(now);
+        return record;
+      }
+
+      assertValidBudgetItem(item);
+      const record: BudgetItemRecord = {
+        ...item,
+        id,
+        createdAt: current.createdAt,
+        updatedAt: now,
+      };
+      await this.db.budgetItems.put(record);
+      await this.touch(now);
+      return record;
+    });
+  }
+
+  /**
+   * Deletes the item from every month; with `fromMonth`, a recurring item that started earlier
+   * only stops repeating from that month on.
+   */
+  async deleteBudgetItem(id: string, fromMonth?: YearMonth): Promise<void> {
+    await this.db.transaction('rw', this.db.budgetItems, this.db.meta, async () => {
+      const current = await this.db.budgetItems.get(id);
+      if (!current) throw new RepositoryError('BUDGET_ITEM_NOT_FOUND');
+      const now = this.clock.now();
+      if (fromMonth !== undefined && canSplitAt(current, fromMonth)) {
+        await this.db.budgetItems.put({ ...endBefore(current, fromMonth), updatedAt: now });
+      } else {
+        await this.db.budgetItems.delete(id);
+      }
+      await this.touch(now);
+    });
+  }
+
+  // --- Credits ---
+
+  async listCredits(): Promise<CreditRecord[]> {
+    return (await this.db.credits.toArray()).sort(byCreation);
+  }
+
+  async getCredit(id: string): Promise<CreditRecord | undefined> {
+    return this.db.credits.get(id);
+  }
+
+  async addCredit(draft: CreditDraft): Promise<CreditRecord> {
+    const credit = { ...draft, name: draft.name.trim() };
+    assertValidCredit(credit);
+    const now = this.clock.now();
+    const record: CreditRecord = {
+      ...credit,
+      id: crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    await this.db.transaction('rw', this.db.credits, this.db.meta, async () => {
+      await this.db.credits.add(record);
+      await this.touch(now);
+    });
+    return record;
+  }
+
+  /** Replaces the credit's data, balance updates included. */
+  async updateCredit(id: string, draft: CreditDraft): Promise<CreditRecord> {
+    return this.db.transaction('rw', this.db.credits, this.db.meta, async () => {
+      const current = await this.db.credits.get(id);
+      if (!current) throw new RepositoryError('CREDIT_NOT_FOUND');
+      const credit = { ...draft, name: draft.name.trim() };
+      assertValidCredit(credit);
+      const now = this.clock.now();
+      const record: CreditRecord = { ...credit, id, createdAt: current.createdAt, updatedAt: now };
+      await this.db.credits.put(record);
+      await this.touch(now);
+      return record;
+    });
+  }
+
+  /**
+   * Records what is owed before a given payment ("actualizar saldo"): a new plan from that payment
+   * on. A plan already starting on that date is replaced; it cannot start before the credit.
+   */
+  async setCreditPlan(id: string, plan: CreditPlan): Promise<CreditRecord> {
+    return this.db.transaction('rw', this.db.credits, this.db.meta, async () => {
+      const current = await this.db.credits.get(id);
+      if (!current) throw new RepositoryError('CREDIT_NOT_FOUND');
+      const first = current.plans[0];
+      if (first && compareIsoDates(plan.firstPaymentDate, first.firstPaymentDate) < 0) {
+        throw new RepositoryError('INVALID_CREDIT');
+      }
+      const updated = { ...current, plans: withPlan(current.plans, plan) };
+      assertValidCredit(updated);
+      const now = this.clock.now();
+      const record: CreditRecord = { ...updated, updatedAt: now };
+      await this.db.credits.put(record);
+      await this.touch(now);
+      return record;
+    });
+  }
+
+  /** Removes a balance update; the credit as first registered can only be edited. */
+  async deleteCreditPlan(id: string, planIndex: number): Promise<CreditRecord> {
+    return this.db.transaction('rw', this.db.credits, this.db.meta, async () => {
+      const current = await this.db.credits.get(id);
+      if (!current) throw new RepositoryError('CREDIT_NOT_FOUND');
+      if (planIndex === 0) throw new RepositoryError('CANNOT_DELETE_FIRST_PLAN');
+      if (!current.plans[planIndex]) throw new RepositoryError('INVALID_CREDIT');
+      const updated = { ...current, plans: current.plans.filter((_, i) => i !== planIndex) };
+      assertValidCredit(updated);
+      const now = this.clock.now();
+      const record: CreditRecord = { ...updated, updatedAt: now };
+      await this.db.credits.put(record);
+      await this.touch(now);
+      return record;
+    });
+  }
+
+  async deleteCredit(id: string): Promise<void> {
+    await this.db.transaction('rw', this.db.credits, this.db.meta, async () => {
+      if (!(await this.db.credits.get(id))) throw new RepositoryError('CREDIT_NOT_FOUND');
+      await this.db.credits.delete(id);
+      await this.touch(this.clock.now());
+    });
+  }
+
+  // --- Whole dataset (backups) ---
+
+  private get dataTables() {
+    return [this.db.accounts, this.db.events, this.db.budgetItems, this.db.credits];
+  }
+
+  /** Everything the user stored, in a deterministic order (stable backup files). */
+  async exportData(): Promise<DataSet> {
+    return this.db.transaction('r', this.dataTables, async () => ({
+      accounts: await this.listAccounts(),
+      events: sortEvents(await this.db.events.toArray()) as EventRecord[],
+      budgetItems: await this.listBudgetItems(),
+      credits: await this.listCredits(),
+    }));
+  }
+
+  /** Whether there is anything worth backing up. */
+  async hasData(): Promise<boolean> {
+    return this.db.transaction('r', this.dataTables, async () => {
+      const counts = await Promise.all(this.dataTables.map((table) => table.count()));
+      return counts.some((count) => count > 0);
+    });
+  }
+
+  /**
+   * Replaces all the user's data with `data` in one transaction: either everything is replaced or
+   * nothing changes. The data was just read from a backup, so it counts as backed up.
+   */
+  async replaceAll(data: DataSet): Promise<void> {
+    await this.db.transaction('rw', [...this.dataTables, this.db.meta], async () => {
+      await Promise.all(this.dataTables.map((table) => table.clear()));
       await this.db.accounts.bulkAdd(data.accounts);
       await this.db.events.bulkAdd(data.events);
+      await this.db.budgetItems.bulkAdd(data.budgetItems);
+      await this.db.credits.bulkAdd(data.credits);
       const now = this.clock.now();
       await this.touch(now);
       await this.db.meta.put({ key: 'lastBackupAt', value: now });
     });
   }
 
-  /** Deletes every account, movement and backup record on this device. */
+  /** Deletes all the user's data and backup records on this device. */
   async clearAll(): Promise<void> {
-    await this.db.transaction('rw', this.db.accounts, this.db.events, this.db.meta, async () => {
-      await this.db.accounts.clear();
-      await this.db.events.clear();
-      await this.db.meta.clear();
+    await this.db.transaction('rw', [...this.dataTables, this.db.meta], async () => {
+      await Promise.all([...this.dataTables, this.db.meta].map((table) => table.clear()));
     });
   }
 

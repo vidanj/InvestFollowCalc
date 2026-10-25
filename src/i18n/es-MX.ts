@@ -1,5 +1,8 @@
 import type { BackupErrorCode } from '../backup/backup';
 import type { RepositoryErrorCode } from '../db/repository';
+import type { BudgetIssueCode, ExpenseCategory } from '../domain/budget';
+import type { CreditIssueCode, PaymentFrequency } from '../domain/credit';
+import type { YearMonth } from '../domain/months';
 import type { RangeKey } from '../domain/series';
 import type { Currency, IsoDate } from '../domain/types';
 import { DAYS_PER_MONTH } from '../domain/types';
@@ -27,6 +30,44 @@ const dayMonth = new Intl.DateTimeFormat(LOCALE, {
 export function formatShortDate(date: IsoDate): string {
   const [y, m, d] = date.split('-').map(Number) as [number, number, number];
   return dayMonth.format(new Date(Date.UTC(y, m - 1, d)));
+}
+
+const monthYear = new Intl.DateTimeFormat(LOCALE, {
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+const shortMonthYear = new Intl.DateTimeFormat(LOCALE, {
+  month: 'short',
+  year: '2-digit',
+  timeZone: 'UTC',
+});
+const monthName = new Intl.DateTimeFormat(LOCALE, { month: 'long', timeZone: 'UTC' });
+const wholePercent = new Intl.NumberFormat(LOCALE, { style: 'percent', maximumFractionDigits: 0 });
+
+function monthToDate(month: YearMonth): Date {
+  const [y, m] = month.split('-').map(Number) as [number, number];
+  return new Date(Date.UTC(y, m - 1, 1));
+}
+
+/** "octubre de 2026". */
+export function formatMonth(month: YearMonth): string {
+  return monthYear.format(monthToDate(month));
+}
+
+/** "oct 26" (for chart axes). */
+export function formatShortMonth(month: YearMonth): string {
+  return shortMonthYear.format(monthToDate(month));
+}
+
+/** Month names for pickers: index 0 = "enero". */
+export const MONTH_NAMES = Array.from({ length: 12 }, (_, i) =>
+  monthName.format(new Date(Date.UTC(2026, i, 1))),
+);
+
+/** A ratio as a whole percentage: 0.725 → "73%". */
+export function formatWholePercent(ratio: number): string {
+  return wholePercent.format(ratio);
 }
 
 /** "1 oct 2026". */
@@ -80,6 +121,79 @@ const repositoryMessages: Record<RepositoryErrorCode, string> = {
   INVALID_EVENT: 'Revisa los datos del movimiento.',
   CANNOT_DELETE_INITIAL:
     'El saldo inicial no se puede eliminar. Si ya no quieres la cuenta, elimínala completa.',
+  BUDGET_ITEM_NOT_FOUND: 'Este concepto ya no existe.',
+  INVALID_BUDGET_ITEM: 'Revisa los datos del concepto.',
+  CREDIT_NOT_FOUND: 'Este crédito ya no existe.',
+  INVALID_CREDIT: 'Revisa los datos del crédito.',
+  CANNOT_DELETE_FIRST_PLAN:
+    'El saldo con el que registraste el crédito no se puede quitar; edita el crédito o elimínalo.',
+};
+
+const budgetIssueMessages: Record<BudgetIssueCode, string> = {
+  INVALID_NAME: 'Escribe un concepto de 1 a 60 caracteres.',
+  INVALID_AMOUNT: 'El monto debe ser mayor a 0.',
+  INVALID_CURRENCY: 'Elige una moneda.',
+  INVALID_MONTH: 'Elige un mes válido.',
+  INVALID_CATEGORY: 'Elige una categoría.',
+  END_BEFORE_START: 'El mes final no puede ser anterior al mes inicial.',
+  END_WITHOUT_RECURRING: 'Solo un concepto que se repite puede tener mes final.',
+};
+
+const creditIssueMessages: Record<CreditIssueCode, string> = {
+  INVALID_NAME: 'Escribe un nombre de 1 a 60 caracteres.',
+  INVALID_CURRENCY: 'Elige una moneda.',
+  INVALID_RATE: 'La tasa debe estar entre 0% y 999.99%.',
+  INVALID_FREQUENCY: 'Elige cada cuándo pagas.',
+  INVALID_FEES: 'Las comisiones no pueden ser negativas ni mayores al monto del crédito.',
+  NO_PLANS: 'Falta el saldo del crédito.',
+  INVALID_DATE: 'Escribe una fecha válida.',
+  PLANS_OUT_OF_ORDER: 'Ya hay un cambio de saldo en esa fecha o después; elige otra fecha.',
+  INVALID_BALANCE: 'El saldo debe ser un monto válido, de 0 o más.',
+  INVALID_PAYMENT: 'El pago debe ser mayor a 0.',
+  PAYMENT_TOO_LOW:
+    'Con ese pago la deuda nunca bajaría: no alcanza a cubrir los intereses. Aumenta el pago.',
+  TOO_MANY_PAYMENTS: 'Con ese pago tardarías más de 1,200 pagos en terminar. Aumenta el pago.',
+};
+
+const categoryLabels: Record<ExpenseCategory, string> = {
+  housing: 'Vivienda',
+  services: 'Servicios (luz, agua, internet)',
+  food: 'Comida y súper',
+  transport: 'Transporte',
+  subscriptions: 'Suscripciones',
+  health: 'Salud',
+  leisure: 'Entretenimiento',
+  small: 'Gastos hormiga',
+  credit: 'Créditos y deudas',
+  other: 'Otros',
+};
+
+/** Short names for chart axes. */
+const categoryShortLabels: Record<ExpenseCategory, string> = {
+  housing: 'Vivienda',
+  services: 'Servicios',
+  food: 'Comida',
+  transport: 'Transporte',
+  subscriptions: 'Suscripciones',
+  health: 'Salud',
+  leisure: 'Entretenimiento',
+  small: 'Hormiga',
+  credit: 'Créditos',
+  other: 'Otros',
+};
+
+const frequencyLabels: Record<PaymentFrequency, string> = {
+  monthly: 'Mensual',
+  semimonthly: 'Quincenal',
+  biweekly: 'Catorcenal',
+  weekly: 'Semanal',
+};
+
+const perPeriod: Record<PaymentFrequency, string> = {
+  monthly: 'al mes',
+  semimonthly: 'por quincena',
+  biweekly: 'por catorcena',
+  weekly: 'por semana',
 };
 
 const rangeLabels: Record<RangeKey, string> = {
@@ -120,6 +234,7 @@ export const strings = {
   nav: {
     label: 'Navegación principal',
     portfolio: 'Portafolio',
+    budget: 'Presupuesto',
     backup: 'Respaldo',
     settings: 'Ajustes',
   },
@@ -155,12 +270,12 @@ export const strings = {
     previewTitle: 'Contenido del respaldo',
     previewSummary: (accounts: number, events: number, date: string) =>
       `${countOf(accounts, 'cuenta', 'cuentas')} y ${countOf(events, 'movimiento', 'movimientos')}, creado el ${date}.`,
-    replaceWarning: (current: number) =>
-      current === 0
-        ? 'Este dispositivo no tiene datos: se cargarán los del respaldo.'
-        : current === 1
-          ? 'Se borrará la cuenta que hay ahora en este dispositivo y en su lugar quedarán las del respaldo.'
-          : `Se borrarán las ${current} cuentas que hay ahora en este dispositivo y en su lugar quedarán las del respaldo.`,
+    previewBudget: (items: number, credits: number) =>
+      `Presupuesto: ${countOf(items, 'concepto', 'conceptos')} y ${countOf(credits, 'crédito', 'créditos')}.`,
+    replaceWarning: (hasData: boolean) =>
+      hasData
+        ? 'Se borrarán todos los datos que hay ahora en este dispositivo (cuentas, presupuesto y créditos) y en su lugar quedarán los del respaldo.'
+        : 'Este dispositivo no tiene datos: se cargarán los del respaldo.',
     backupFirstHint: 'Si quieres conservar los datos actuales, crea primero un respaldo de ellos.',
     replaceButton: 'Reemplazar mis datos con este respaldo',
     replaceConfirmWarning: 'Los datos actuales de este dispositivo se perderán. ¿Continuar?',
@@ -172,6 +287,212 @@ export const strings = {
     reminderStale: (days: number) =>
       `Tu último respaldo tiene más de ${days} días y hubo cambios desde entonces.`,
     reminderAction: 'Crear respaldo',
+  },
+  budget: {
+    title: 'Presupuesto',
+    intro: 'Lo que ganas y lo que pagas cada mes: cuánto gastas, en qué y cuánto te queda.',
+    monthLabel: 'Mes',
+    previousMonth: 'Mes anterior',
+    nextMonth: 'Mes siguiente',
+    currentMonth: 'Ir al mes actual',
+    projection:
+      'Mes futuro: se muestran tus conceptos que se repiten y los pagos programados de tus créditos.',
+    addIncome: 'Agregar ingreso',
+    addExpense: 'Agregar gasto',
+    emptyTitle: 'Nada registrado en este mes',
+    emptyBody:
+      'Empieza con lo que ganas al mes y luego agrega lo que pagas: suscripciones, servicios, gastos hormiga, créditos…',
+    income: 'Ingresos',
+    expenses: 'Gastos',
+    left: 'Te queda',
+    overspent: 'Gastaste de más',
+    spentOfIncome: (percent: string) => `${percent} de tus ingresos`,
+    noIncome: 'Sin ingresos este mes',
+    creditPayments: 'Pagos a créditos',
+    meterLabel: 'Parte de tus ingresos que ya se va en gastos',
+    meterValue: (percent: string) => `Gastas el ${percent} de lo que ganas`,
+    meterOver: (percent: string) => `Gastas el ${percent} de lo que ganas: más de lo que entra`,
+    incomeTitle: 'Ingresos',
+    expensesTitle: 'Gastos',
+    creditsTitle: 'Pagos de créditos',
+    nothingYet: 'Nada todavía.',
+    everyMonth: 'Cada mes',
+    until: (month: string) => `hasta ${month}`,
+    oneOff: 'Solo este mes',
+    paymentNumbers: (numbers: number[], total: number) =>
+      numbers.length === 1
+        ? `Pago ${numbers[0]} de ${total}`
+        : `Pagos ${numbers.slice(0, -1).join(', ')} y ${numbers.at(-1)} de ${total}`,
+    evolutionTitle: 'Evolución',
+    categoryTitle: '¿En qué se va tu dinero?',
+    categorySubtitle: 'Gastos del mes por categoría.',
+    categoryShare: 'Del gasto',
+    cashflowTitle: 'Ingresos y gastos por mes',
+    cashflowSubtitle: 'Hasta 12 meses, terminando en el mes que estás viendo.',
+    leftTitle: 'Lo que te queda cada mes',
+    leftSubtitle: 'Ingresos menos gastos. Abajo de cero gastaste más de lo que ganaste.',
+    category: 'Categoría',
+    amount: 'Monto',
+    month: 'Mes',
+    projected: '(proyección)',
+    categories: categoryLabels,
+    categoryShort: categoryShortLabels,
+  },
+  budgetItem: {
+    newIncomeTitle: 'Nuevo ingreso',
+    newExpenseTitle: 'Nuevo gasto',
+    editIncomeTitle: 'Editar ingreso',
+    editExpenseTitle: 'Editar gasto',
+    kindLabel: 'Tipo',
+    kinds: { income: 'Ingreso', expense: 'Gasto' },
+    name: 'Concepto',
+    incomePlaceholder: 'Ej. Sueldo, Honorarios',
+    expensePlaceholder: 'Ej. Renta, Netflix, Café',
+    amount: 'Monto',
+    currency: 'Moneda',
+    category: 'Categoría',
+    recurring: 'Se repite cada mes',
+    recurringHelp: 'Por ejemplo tu sueldo, la renta o una suscripción.',
+    month: 'Mes',
+    startMonth: 'Desde',
+    hasEnd: 'Termina en un mes',
+    endMonth: 'Hasta',
+    year: 'Año',
+    scopeLabel: '¿A qué meses aplica el cambio?',
+    scopeFrom: (month: string) => `Desde ${month}`,
+    scopeAll: 'A todos los meses',
+    scopeHelp: (month: string) => `"Desde ${month}" deja los meses anteriores como estaban.`,
+    delete: 'Eliminar',
+    deleteWarning: 'Se quitará de todos los meses.',
+    deleteOneWarning: 'Se eliminará este concepto.',
+    stopFrom: (month: string) => `Dejar de repetir desde ${month}`,
+    stopWarning: (month: string) => `Los meses anteriores a ${month} no cambian.`,
+    confirmStop: 'Sí, dejar de repetir',
+    deleteEverywhere: 'Eliminar de todos los meses',
+    notFound: 'Este concepto ya no existe.',
+    creditHint:
+      'Para un crédito con intereses, mejor regístralo como crédito: así se calcula cada pago.',
+  },
+  credit: {
+    sectionTitle: 'Créditos',
+    new: 'Nuevo crédito',
+    empty:
+      'Registra un crédito o préstamo para saber cuánto pagarás en total y cuándo lo terminas de pagar.',
+    paidOffTitle: 'Liquidados',
+    newTitle: 'Nuevo crédito',
+    editTitle: 'Editar crédito',
+    name: 'Nombre',
+    namePlaceholder: 'Ej. Préstamo personal, Auto, Tarjeta',
+    currency: 'Moneda',
+    balance: 'Monto del crédito',
+    balanceHelp:
+      'Lo que debes antes del primer pago. Si el crédito ya lleva tiempo, puedes poner lo que debes hoy y la fecha de tu próximo pago.',
+    rate: 'Tasa de interés anual (%)',
+    rateHelp: 'La tasa ordinaria fija, por ejemplo 27.5. Para meses sin intereses escribe 0.',
+    iva: 'Me cobran IVA sobre los intereses (16%)',
+    ivaHelp: 'El IVA se suma a cada pago, aparte del pago fijo.',
+    frequency: 'Periodicidad de pago',
+    frequencies: frequencyLabels,
+    perPeriod,
+    firstPaymentDate: 'Fecha del primer pago',
+    firstPaymentHelp:
+      'En pagos quincenales, el otro día de pago es 15 días después (por ejemplo, los días 2 y 17).',
+    modeLabel: '¿Qué dato tienes?',
+    modes: { term: 'Cuántos pagos son', payment: 'Cuánto pago cada vez' },
+    count: 'Número de pagos',
+    countHelp: 'Por ejemplo, 120 pagos quincenales son 60 meses.',
+    payment: (withIva: boolean) =>
+      withIva ? 'Pago fijo (capital + intereses, sin IVA)' : 'Pago por periodo',
+    paymentHelp: 'El que aparece en tu tabla de amortización.',
+    fees: 'Comisiones y seguros cobrados al inicio',
+    feesHelp:
+      'Lo que te descontaron al entregarte el dinero (comisión por disposición, seguros). Sirve para saber el costo real.',
+    invalidCount: 'Escribe un número entero de pagos, de 1 a 1,200.',
+    previewTitle: 'Así queda tu crédito',
+    previewPayment: (money: string, frequency: PaymentFrequency) =>
+      `Pago fijo: ${money} ${perPeriod[frequency]}.`,
+    previewFirstTotal: (money: string) => `Tu primer pago con IVA: ${money}.`,
+    previewEnds: (date: string, count: number) =>
+      `Lo terminas de pagar el ${date} (${countOf(count, 'pago', 'pagos')}).`,
+    previewTotal: (total: string, interest: string) =>
+      `Pagarás en total ${total}, de los cuales ${interest} son intereses e IVA.`,
+    previewMinimum: (money: string) =>
+      `El pago fijo debe ser mayor a ${money} para que la deuda baje.`,
+    rateLine: (rate: string, frequency: PaymentFrequency, withIva: boolean) =>
+      `${rate} anual · ${frequencyLabels[frequency]}${withIva ? ' · más IVA' : ''}`,
+    currentBalance: 'Saldo pendiente',
+    currentBalanceDetail: (date: string) => `Capital, antes del pago del ${date}`,
+    nextPayment: 'Próximo pago',
+    nextPaymentDetail: (date: string, number: number, total: number) =>
+      `${date} · pago ${number} de ${total}`,
+    paymentOf: (number: number, total: number) => `Pago ${number} de ${total}`,
+    payoff: 'Lo terminas de pagar',
+    payoffDetail: (left: number) => `Faltan ${countOf(left, 'pago', 'pagos')}`,
+    paidOff: 'Liquidado',
+    totalPaid: 'Total a pagar',
+    totalPaidDetail: 'Todos los pagos, con IVA',
+    interestCost: 'Intereses + IVA',
+    interestCostDetail: (percent: string) => `${percent} sobre el monto del crédito`,
+    totalCost: 'Costo total del crédito',
+    totalCostDetail: (received: string) => `Intereses, IVA y comisiones · recibiste ${received}`,
+    paidSoFar: 'Pagado hasta hoy',
+    paidSoFarDetail: (made: number, total: number) => `${made} de ${total} pagos`,
+    remaining: 'Te falta pagar',
+    progress: (percent: string) => `Llevas pagado el ${percent} del total`,
+    progressLabel: 'Avance del crédito',
+    updateBalance: 'Actualizar saldo',
+    endsOn: (date: string) => `Termina el ${date}`,
+    paidOffOn: (date: string) => `Liquidado el ${date}`,
+    paidOffNotice: (date: string) => `¡Crédito liquidado! El último pago fue el ${date}.`,
+    nothingOwed: 'No hay saldo pendiente.',
+    splitTitle: '¿A dónde se va lo que pagas?',
+    splitSubtitle: 'Todo lo que pagarás, más lo que te descontaron al inicio.',
+    principal: 'Capital',
+    interest: 'Intereses',
+    ivaLabel: 'IVA',
+    feesLabel: 'Comisiones y seguros',
+    balanceChartTitle: 'Saldo pendiente',
+    balanceChartSubtitle: 'Lo que debes después de cada pago.',
+    today: 'Hoy',
+    scheduleTitle: 'Tabla de pagos',
+    scheduleNote: 'Los pagos con fecha de hoy o anterior se cuentan como hechos.',
+    columns: {
+      number: 'No.',
+      date: 'Fecha',
+      payment: 'Pago fijo',
+      principal: 'Capital',
+      interest: 'Intereses',
+      iva: 'IVA',
+      total: 'Pago total',
+      balance: 'Saldo',
+    },
+    paid: 'Pagado',
+    plansTitle: 'Cambios de saldo',
+    planOriginal: 'Crédito registrado',
+    planUpdate: 'Saldo actualizado',
+    planLine: (balance: string, payment: string) => `Saldo ${balance} · pago fijo ${payment}`,
+    differenceLess: (money: string) => `${money} menos de lo que marcaba el plan`,
+    differenceMore: (money: string) => `${money} más de lo que marcaba el plan`,
+    differenceNone: 'Igual a lo que marcaba el plan',
+    deletePlan: 'Quitar este cambio',
+    deletePlanWarning: 'Se recalculará el crédito sin este cambio de saldo.',
+    deleteCredit: 'Eliminar crédito',
+    deleteWarning:
+      'Se borrará el crédito y sus pagos dejarán de aparecer en tu presupuesto. No se puede deshacer.',
+    notFound: 'No encontramos este crédito.',
+    corrupted: 'Los datos de este crédito tienen un problema y no se pueden calcular.',
+    updateTitle: 'Actualizar saldo',
+    updateIntro:
+      'Si hiciste un pago extra, te cobraron algo más o tu banco muestra otro saldo, regístralo aquí. Todo se recalcula a partir de tu próximo pago.',
+    owed: 'Saldo que debes',
+    owedHelp: 'El capital pendiente que muestra tu banco, antes de tu próximo pago.',
+    nextPaymentDate: 'Fecha de tu próximo pago',
+    updateAfterFirst: (date: string) =>
+      `Debe ser después del primer pago del crédito (${date}). Para cambiar ese, edita el crédito.`,
+    expectedOwed: (money: string, date: string) =>
+      `Según el plan, antes del pago del ${date} deberías ${money}.`,
+    extraPaymentHint:
+      'Si debes menos porque hiciste un pago extra, regístralo también como gasto del mes para que cuente en tu presupuesto.',
   },
   portfolio: {
     title: 'Portafolio',
@@ -235,13 +556,13 @@ export const strings = {
     requestPersist: 'Pedir almacenamiento persistente',
     privacyTitle: 'Privacidad',
     privacyBody: [
-      'Tus cuentas y movimientos se guardan solo en este dispositivo, dentro del navegador.',
+      'Tus cuentas, movimientos, presupuesto y créditos se guardan solo en este dispositivo, dentro del navegador.',
       'La app no usa servidores, analíticas ni servicios de terceros: nada de lo que registras sale de aquí.',
       'Para pasar tus datos a otro dispositivo usa los respaldos cifrados.',
     ],
     dangerTitle: 'Borrar todos los datos',
     dangerBody:
-      'Elimina todas las cuentas y movimientos de este dispositivo. No afecta a los respaldos que ya hayas guardado.',
+      'Elimina todas las cuentas, movimientos, presupuesto y créditos de este dispositivo. No afecta a los respaldos que ya hayas guardado.',
     dangerBackupHint: 'Antes de borrar, crea un respaldo si quieres conservar tus datos.',
     deleteAll: 'Borrar todos los datos',
     confirmWord: 'BORRAR',
@@ -346,6 +667,8 @@ export const strings = {
     futureDate: 'La fecha no puede ser futura.',
     nameLength: (max: number) => `Escribe un nombre de 1 a ${max} caracteres.`,
     issue: (code: ValidationIssueCode) => issueMessages[code],
+    budgetIssue: (code: BudgetIssueCode) => budgetIssueMessages[code],
+    creditIssue: (code: CreditIssueCode) => creditIssueMessages[code],
     repository: (code: RepositoryErrorCode) => repositoryMessages[code],
     unexpected: 'Ocurrió un error inesperado. Tus datos no se modificaron.',
   },

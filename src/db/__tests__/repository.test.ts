@@ -257,17 +257,19 @@ describe('whole dataset', () => {
     expect(await repo.getMeta('lastBackupAt')).toBe(await repo.getMeta('lastDataChangeAt'));
 
     await repo.clearAll();
-    expect(await repo.exportData()).toEqual({ accounts: [], events: [] });
+    expect(await repo.exportData()).toEqual({
+      accounts: [],
+      events: [],
+      budgetItems: [],
+      credits: [],
+    });
     expect(await repo.getMeta('lastBackupAt')).toBeUndefined();
   });
 
   it('leaves the data untouched when a replacement fails halfway', async () => {
     const keep = await repo.createAccount(newAccount({ name: 'Queda' }));
     const exported = await repo.exportData();
-    const broken = {
-      accounts: [...exported.accounts, ...exported.accounts],
-      events: exported.events,
-    };
+    const broken = { ...exported, accounts: [...exported.accounts, ...exported.accounts] };
 
     await expect(repo.replaceAll(broken)).rejects.toThrow();
     expect((await repo.listAccounts()).map((a) => a.id)).toEqual([keep.id]);

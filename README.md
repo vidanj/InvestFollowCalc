@@ -28,6 +28,24 @@ aportados.
 Qué significa cada número (ganancia, % simple, rendimiento anualizado TWR, periodos):
 [docs/calculos.md](docs/calculos.md).
 
+## Presupuesto y créditos
+
+En _Presupuesto_ registras lo que **ganas** y lo que **pagas** cada mes, y la app te dice cuánto
+gastas, en qué y **cuánto te queda**, con gráficas mes a mes.
+
+1. **Agrega tus ingresos** (sueldo, honorarios). Marca "Se repite cada mes" para no capturarlos de
+   nuevo cada mes.
+2. **Agrega tus gastos** con su categoría: suscripciones, servicios, renta, gastos hormiga… Los que
+   se repiten aparecen solos cada mes; los de un solo mes, sólo en el suyo.
+3. **Registra tus créditos**: monto, tasa anual, si te cobran IVA sobre los intereses, cada cuándo
+   pagas (mensual, quincenal…) y el número de pagos o el pago fijo. La app arma la tabla de
+   amortización y te dice **cuánto pagarás en total**, cuánto son intereses e IVA y **qué día
+   terminas de pagar**. Sus pagos se suman solos a los gastos de cada mes.
+4. Si haces un pago extra o tu banco muestra otro saldo, usa **Actualizar saldo** y todo se recalcula
+   desde tu próximo pago.
+
+Cómo se calcula cada pago: [docs/calculos.md](docs/calculos.md#créditos).
+
 ## Instalar la app
 
 | Dispositivo                  | Cómo                                                                                   |
@@ -78,16 +96,16 @@ npm run icons          # regenera los íconos PWA
 
 Para los e2e hay que instalar los navegadores una vez: `npx playwright install chromium webkit`.
 
-| Carpeta                          | Contenido                                          |
-| -------------------------------- | -------------------------------------------------- |
-| [src/domain](src/domain)         | Cálculos puros (ganancia, TWR, portafolio, series) |
-| [src/db](src/db)                 | Base de datos local (Dexie) y repositorio          |
-| [src/backup](src/backup)         | Cifrado, exportación e importación de respaldos    |
-| [src/features](src/features)     | Pantallas                                          |
-| [src/components](src/components) | UI y gráficas                                      |
-| [src/i18n](src/i18n)             | Todos los textos de la interfaz (es-MX)            |
-| [e2e](e2e)                       | Pruebas end-to-end                                 |
-| [docs](docs)                     | Plan, cálculos, respaldos y proceso de release     |
+| Carpeta                          | Contenido                                             |
+| -------------------------------- | ----------------------------------------------------- |
+| [src/domain](src/domain)         | Cálculos puros (ganancia, TWR, presupuesto, créditos) |
+| [src/db](src/db)                 | Base de datos local (Dexie) y repositorio             |
+| [src/backup](src/backup)         | Cifrado, exportación e importación de respaldos       |
+| [src/features](src/features)     | Pantallas                                             |
+| [src/components](src/components) | UI y gráficas                                         |
+| [src/i18n](src/i18n)             | Todos los textos de la interfaz (es-MX)               |
+| [e2e](e2e)                       | Pruebas end-to-end                                    |
+| [docs](docs)                     | Plan, cálculos, respaldos y proceso de release        |
 
 Reglas del proyecto (para personas y para Claude): [CLAUDE.md](CLAUDE.md). Publicar una versión:
 [docs/release.md](docs/release.md). Cambios: [CHANGELOG.md](CHANGELOG.md).

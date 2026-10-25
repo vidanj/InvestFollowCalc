@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { EXPENSE_CATEGORIES } from '../domain/budget';
+import { PAYMENT_FREQUENCIES } from '../domain/credit';
 import { CURRENCIES } from '../domain/types';
 import { MAX_ITERATIONS } from './crypto';
 
@@ -33,6 +35,7 @@ export const payloadHeaderSchema = z.object({
 });
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const yearMonth = z.string().regex(/^\d{4}-\d{2}$/);
 const cents = z.number().int().refine(Number.isSafeInteger);
 const timestamps = { createdAt: z.string(), updatedAt: z.string() };
 const eventBase = {
@@ -62,6 +65,34 @@ export const eventRecordSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
+const budgetItemBase = {
+  id: z.string().min(1),
+  name: z.string(),
+  amount: cents,
+  currency: z.enum(CURRENCIES),
+  month: yearMonth,
+  recurring: z.boolean(),
+  endMonth: yearMonth.optional(),
+  ...timestamps,
+};
+
+export const budgetItemRecordSchema = z.discriminatedUnion('kind', [
+  z.object({ ...budgetItemBase, kind: z.literal('income') }),
+  z.object({ ...budgetItemBase, kind: z.literal('expense'), category: z.enum(EXPENSE_CATEGORIES) }),
+]);
+
+export const creditRecordSchema = z.object({
+  id: z.string().min(1),
+  name: z.string(),
+  currency: z.enum(CURRENCIES),
+  annualRateBps: z.number().int(),
+  ivaOnInterest: z.boolean(),
+  frequency: z.enum(PAYMENT_FREQUENCIES),
+  upfrontFees: cents,
+  plans: z.array(z.object({ firstPaymentDate: isoDate, balance: cents, payment: cents })),
+  ...timestamps,
+});
+
 /** Decrypted content, current schema version. */
 export const payloadSchema = z.object({
   schemaVersion: z.number().int().positive(),
@@ -69,6 +100,9 @@ export const payloadSchema = z.object({
   exportedAt: z.string(),
   accounts: z.array(accountRecordSchema),
   events: z.array(eventRecordSchema),
+  /** Since schema v2. */
+  budgetItems: z.array(budgetItemRecordSchema),
+  credits: z.array(creditRecordSchema),
   /** Reserved for synced settings; device-only preferences (theme) never go here. */
   settings: z.object({}),
 });

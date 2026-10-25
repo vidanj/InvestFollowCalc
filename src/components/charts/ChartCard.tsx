@@ -15,6 +15,8 @@ interface ChartCardProps {
   legend?: LegendItem[];
   /** Data-table twin of the chart, so no value depends on hovering. */
   table?: ReactNode;
+  /** Plot height in px when it depends on the data (e.g. one row per category). */
+  plotHeight?: number;
   children: ReactNode;
 }
 
@@ -34,7 +36,14 @@ export function LegendKey({ color, kind }: Pick<LegendItem, 'color' | 'kind'>) {
   );
 }
 
-export function ChartCard({ title, subtitle, legend, table, children }: ChartCardProps) {
+export function ChartCard({
+  title,
+  subtitle,
+  legend,
+  table,
+  plotHeight,
+  children,
+}: ChartCardProps) {
   return (
     <figure className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
       <figcaption>
@@ -51,7 +60,13 @@ export function ChartCard({ title, subtitle, legend, table, children }: ChartCar
           ))}
         </ul>
       )}
-      <div className="h-56 w-full">{children}</div>
+      {plotHeight === undefined ? (
+        <div className="h-56 w-full">{children}</div>
+      ) : (
+        <div className="w-full" style={{ height: plotHeight }}>
+          {children}
+        </div>
+      )}
       {table && (
         <details className="text-sm">
           <summary className="cursor-pointer text-xs font-medium text-teal-700 dark:text-teal-400">

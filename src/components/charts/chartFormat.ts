@@ -8,6 +8,17 @@ const axisDate = new Intl.DateTimeFormat(LOCALE, {
   timeZone: 'UTC',
 });
 
+const axisMonth = new Intl.DateTimeFormat(LOCALE, {
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+
+/** Time-axis tick for multi-year spans: "dic 2026" (a 2-digit year reads like a day). */
+export function formatAxisMonth(timestamp: number): string {
+  return axisMonth.format(new Date(timestamp));
+}
+
 /** Calendar date as a UTC timestamp, for time axes. */
 export function toTimestamp(date: IsoDate): number {
   const [y, m, d] = date.split('-').map(Number) as [number, number, number];
