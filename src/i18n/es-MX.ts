@@ -139,6 +139,7 @@ const budgetIssueMessages: Record<BudgetIssueCode, string> = {
   END_BEFORE_START: 'El mes final no puede ser anterior al mes inicial.',
   INVALID_REPEAT: 'Elige cada cuándo se repite.',
   INVALID_FIRST_DATE: 'Escribe la fecha del primer cargo; debe caer en el mes inicial.',
+  INVALID_SKIP: 'Solo los gastos que se repiten cada mes o cada semana se pueden omitir en un mes.',
   END_WITHOUT_RECURRING: 'Solo un concepto que se repite puede tener mes final.',
 };
 
@@ -335,6 +336,9 @@ export const strings = {
     everyWeek: (times: number, amount: string) => `Cada semana · ${times} × ${amount} este mes`,
     until: (month: string) => `hasta ${month}`,
     oneOff: 'Solo este mes',
+    skipLabel: 'No lo pago este mes',
+    skipAria: (name: string, month: string) => `No pagar ${name} en ${month}`,
+    skippedDetail: (amount: string) => `Omitido este mes: no cuentan ${amount}`,
     paymentNumbers: (numbers: number[], total: number) =>
       numbers.length === 1
         ? `Pago ${numbers[0]} de ${total}`

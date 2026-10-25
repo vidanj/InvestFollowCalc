@@ -121,7 +121,8 @@ Al descifrar, `data` contiene:
 
 Los montos están en **centavos**; la tasa, en puntos base (27.5% = 2750). Los ingresos no llevan
 `category`. `repeat` es `none`, `weekly`, `monthly` o `yearly`; los semanales llevan además
-`firstDate` (fecha del primer cargo) y `endMonth` sólo aparece en conceptos que se repiten y tienen
+`firstDate` (fecha del primer cargo); los gastos mensuales o semanales pueden llevar
+`skippedMonths` (meses que no se pagaron, ordenados) y `endMonth` sólo aparece en conceptos que se repiten y tienen
 mes final. En `settings.investPlan`, `sources` dice por moneda qué rendimiento se usa:
 `portfolio`, `account` (con `accountId`) o `manual` (con `rateBps`); `settings` puede venir vacío. En `plans`, el
 primero es el crédito como se registró y los siguientes son las actualizaciones de saldo.

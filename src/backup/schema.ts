@@ -74,6 +74,7 @@ const budgetItemBase = {
   repeat: z.enum(REPEATS),
   firstDate: isoDate.optional(),
   endMonth: yearMonth.optional(),
+  skippedMonths: z.array(yearMonth).optional(),
   ...timestamps,
 };
 

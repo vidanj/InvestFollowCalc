@@ -290,6 +290,10 @@ Se reportaron al usuario al cerrar cada fase; cualquiera puede revertirse si no 
     Sólo sugiere y proyecta: no registra movimientos en las cuentas.
   - Esquema v3 (`repeat` en lugar de `recurring`, `firstDate`), con migración de Dexie y de
     respaldos; los ajustes de la inversión van en `meta` y en `settings` del respaldo.
+  - **"No lo pago este mes"** (pedido después): casilla en la lista del mes para gastos mensuales y
+    semanales; guarda el mes en `skippedMonths`. Ese mes cuenta 0 (en semanales, todo el mes) y el
+    siguiente vuelve solo. No aplica a anuales, únicos ni ingresos. Campo opcional y aditivo: no
+    cambia índices de Dexie ni `SCHEMA_VERSION` (v3 aún no se publica).
 
 ---
 

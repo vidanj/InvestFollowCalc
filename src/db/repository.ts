@@ -1,8 +1,10 @@
 import {
+  canSkip,
   canSplitAt,
   endBefore,
   startingIn,
   validateBudgetItem,
+  withSkipped,
   type BudgetItemDraft,
 } from '../domain/budget';
 import { validateCredit, withPlan, type CreditDraft, type CreditPlan } from '../domain/credit';
@@ -339,6 +341,26 @@ export class Repository {
         await this.db.budgetItems.delete(id);
       }
       await this.touch(now);
+    });
+  }
+
+  /** Marks a monthly or weekly expense as not paid in `month` (`skip`), or paid again. */
+  async setSkipped(id: string, month: YearMonth, skip: boolean): Promise<BudgetItemRecord> {
+    return this.db.transaction('rw', this.db.budgetItems, this.db.meta, async () => {
+      const current = await this.db.budgetItems.get(id);
+      if (!current) throw new RepositoryError('BUDGET_ITEM_NOT_FOUND');
+      if (!canSkip(current)) throw new RepositoryError('INVALID_BUDGET_ITEM');
+      const now = this.clock.now();
+      const record: BudgetItemRecord = {
+        ...current,
+        skippedMonths: withSkipped(current.skippedMonths, month, skip),
+        updatedAt: now,
+      };
+      if (record.skippedMonths === undefined) delete record.skippedMonths;
+      assertValidBudgetItem(record);
+      await this.db.budgetItems.put(record);
+      await this.touch(now);
+      return record;
     });
   }
 

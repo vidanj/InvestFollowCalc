@@ -28,6 +28,8 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); v
   mes), además de los de una sola vez.
 - Recordatorio de **cargos fijos**: cuánto tener disponible en la cuenta para los cargos automáticos
   del mes.
+- **"No lo pago este mes"**: un gasto mensual o semanal (por ejemplo, una suscripción) se puede
+  omitir un mes; ese mes no cuenta y al siguiente vuelve solo.
 - **Tu año**: ingresos, gastos y lo que quedará al cierre, registrado y proyectado.
 - **Inversión sugerida** (porcentaje de los ingresos, sin pasar de lo que queda) con proyección a
   1, 3, 5 y 10 años usando el rendimiento real del portafolio, de una cuenta o una tasa escrita.

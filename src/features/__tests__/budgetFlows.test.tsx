@@ -284,6 +284,50 @@ describe('repeats, fixed charges and the year', () => {
     expect(within(stat(b.expenses)).getByText(formatMoney(times * 50_000, 'MXN'))).toBeVisible();
   });
 
+  it('skips a subscription for one month, and it comes back the next', async () => {
+    const repository = createTestRepository();
+    await seedBudget(repository);
+    const streaming = await repository.addBudgetItem({
+      kind: 'expense',
+      name: 'Streaming',
+      amount: 29_900,
+      currency: 'MXN',
+      category: 'subscriptions',
+      month: addMonthsToYearMonth(thisMonth, -3),
+      repeat: 'monthly',
+    });
+    const { user } = renderRoute(`/budget?month=${thisMonth}`, repository);
+
+    const skip = await screen.findByRole('checkbox', {
+      name: b.skipAria('Streaming', formatMonth(thisMonth)),
+    });
+    expect(within(stat(b.expenses)).getByText('$8,299.00')).toBeVisible();
+    await user.click(skip);
+
+    expect(await screen.findByText(b.skippedDetail('$299.00'))).toBeVisible();
+    expect(within(stat(b.expenses)).getByText('$8,000.00')).toBeVisible();
+    expect((await repository.getBudgetItem(streaming.id))?.skippedMonths).toEqual([thisMonth]);
+    // The rent is monthly too, so it can be skipped as well; it stays unchecked.
+    expect(
+      screen.getByRole('checkbox', { name: b.skipAria('Renta', formatMonth(thisMonth)) }),
+    ).not.toBeChecked();
+
+    await user.click(screen.getByRole('link', { name: b.nextMonth }));
+    const next = formatMonth(addMonthsToYearMonth(thisMonth, 1));
+    await screen.findByRole('heading', { name: next });
+    expect(screen.getByRole('checkbox', { name: b.skipAria('Streaming', next) })).not.toBeChecked();
+    expect(within(stat(b.expenses)).getByText('$8,299.00')).toBeVisible();
+
+    await user.click(screen.getByRole('link', { name: b.currentMonth }));
+    await user.click(
+      await screen.findByRole('checkbox', {
+        name: b.skipAria('Streaming', formatMonth(thisMonth)),
+      }),
+    );
+    expect(await within(stat(b.expenses)).findByText('$8,299.00')).toBeVisible();
+    expect(await repository.getBudgetItem(streaming.id)).not.toHaveProperty('skippedMonths');
+  });
+
   it('counts a yearly expense only in its month', async () => {
     const repository = createTestRepository();
     await seedBudget(repository);

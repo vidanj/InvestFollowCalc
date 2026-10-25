@@ -41,7 +41,8 @@ Plan completo y fases: [docs/plan.md](docs/plan.md).
 - Interés de créditos: tasa anual / 360 × (365 / pagos por año, a 4 decimales), redondeado al
   centavo por periodo; IVA 16% aparte del pago fijo. Detalle en `docs/calculos.md`.
 - Repeticiones: semanal = cargos reales del mes cada 7 días desde `firstDate`; anual = completo en su
-  mes. Cargos fijos = gastos que se repiten + créditos. Inversión sugerida = % de ingresos topado en
+  mes; `skippedMonths` (sólo gastos mensuales/semanales) hace que ese mes cuente 0. Cargos fijos =
+  gastos que se repiten (no omitidos) + créditos. Inversión sugerida = % de ingresos topado en
   lo que queda; proyección con TWR anualizado real, compuesto mensual, aportando a fin de mes
   (`src/domain/investPlan.ts`).
 

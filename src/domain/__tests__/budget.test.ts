@@ -6,11 +6,14 @@ import {
   firstBudgetMonth,
   isActiveIn,
   monthlyTotals,
+  isSkippedIn,
   occurrencesIn,
+  scheduledIn,
   startingIn,
   summarizeMonth,
   summarizeYear,
   validateBudgetItem,
+  withSkipped,
   type BudgetData,
   type BudgetItem,
   type ExpenseItem,
@@ -161,6 +164,69 @@ describe('weekly items', () => {
     });
     const monthly = { ...gas, repeat: 'monthly' as const, firstDate: undefined };
     expect(startingIn(monthly, '2026-12')).toEqual({ ...monthly, month: '2026-12' });
+  });
+});
+
+describe('skipping a month', () => {
+  const streaming = expense('Streaming', 299, 'subscriptions', {
+    month: '2026-03',
+    skippedMonths: ['2026-10'],
+  });
+
+  it('counts 0 that month and comes back the next', () => {
+    expect(occurrencesIn(streaming, '2026-10')).toBe(0);
+    expect(scheduledIn(streaming, '2026-10')).toBe(1);
+    expect(isActiveIn(streaming, '2026-10')).toBe(true); // still listed, as skipped
+    expect(occurrencesIn(streaming, '2026-11')).toBe(1);
+  });
+
+  it('skips every charge of the month for weekly items', () => {
+    const gas = expense('Gasolina', 500, 'transport', {
+      month: '2026-10',
+      repeat: 'weekly',
+      firstDate: '2026-10-02',
+      skippedMonths: ['2026-11'],
+    });
+    expect(occurrencesIn(gas, '2026-10')).toBe(5);
+    expect(occurrencesIn(gas, '2026-11')).toBe(0);
+  });
+
+  it('applies only to monthly and weekly expenses', () => {
+    const yearly = { ...streaming, repeat: 'yearly' as const };
+    const salary = income('Sueldo', 1, { skippedMonths: ['2026-10'] });
+    expect(isSkippedIn(yearly, '2026-10')).toBe(false);
+    expect(isSkippedIn(salary, '2026-10')).toBe(false);
+  });
+
+  it('leaves the skipped expense out of every total, but lists it apart', () => {
+    const [mxn] = summarizeMonth(
+      { items: [items[0]!, items[2]!, streaming], creditPayments: [] },
+      '2026-10',
+    );
+    expect(mxn).toMatchObject({
+      expenses: cents(8_000),
+      fixedCharges: cents(8_000),
+      left: cents(22_000),
+    });
+    expect(mxn?.expenseItems.map((e) => e.item.id)).toEqual(['Renta']);
+    expect(mxn?.skippedItems).toEqual([{ item: streaming, times: 1, amount: cents(299) }]);
+    expect(mxn?.byCategory.map((c) => c.category)).toEqual(['housing']);
+  });
+
+  it('adds and removes skipped months, kept sorted', () => {
+    expect(withSkipped(undefined, '2026-10', true)).toEqual(['2026-10']);
+    expect(withSkipped(['2026-11'], '2026-10', true)).toEqual(['2026-10', '2026-11']);
+    expect(withSkipped(['2026-10', '2026-11'], '2026-10', true)).toEqual(['2026-10', '2026-11']);
+    expect(withSkipped(['2026-10'], '2026-10', false)).toBeUndefined();
+  });
+
+  it('splits the skipped months when changed from a month on', () => {
+    const paused = { ...streaming, skippedMonths: ['2026-05', '2026-10', '2027-01'] };
+    expect(endBefore(paused, '2026-10').skippedMonths).toEqual(['2026-05']);
+    expect(startingIn(paused, '2026-10').skippedMonths).toEqual(['2026-10', '2027-01']);
+    expect(endBefore({ ...paused, skippedMonths: ['2027-01'] }, '2026-10')).not.toHaveProperty(
+      'skippedMonths',
+    );
   });
 });
 
@@ -330,6 +396,15 @@ describe('validateBudgetItem', () => {
     expect(validateBudgetItem({ ...draft, repeat: 'weekly', firstDate: '2026-01-07' })).toEqual([]);
     expect(validateBudgetItem({ ...draft, firstDate: '2026-01-07' })).toEqual([
       'INVALID_FIRST_DATE',
+    ]);
+    expect(validateBudgetItem({ ...draft, skippedMonths: ['2026-03', '2026-05'] })).toEqual([]);
+    for (const skippedMonths of [[], ['2026-05', '2026-03'], ['2026-03', '2026-03'], ['2026-13']]) {
+      expect(validateBudgetItem({ ...draft, skippedMonths }), String(skippedMonths)).toEqual([
+        'INVALID_SKIP',
+      ]);
+    }
+    expect(validateBudgetItem({ ...draft, repeat: 'none', skippedMonths: ['2026-01'] })).toEqual([
+      'INVALID_SKIP',
     ]);
   });
 

@@ -108,6 +108,47 @@ describe('budget items', () => {
   });
 });
 
+describe('skipping a month', () => {
+  it('marks a monthly expense as not paid that month, and paid again', async () => {
+    const item = await repo.addBudgetItem(rent);
+    expect((await repo.setSkipped(item.id, '2026-11', true)).skippedMonths).toEqual(['2026-11']);
+    expect((await repo.setSkipped(item.id, '2026-10', true)).skippedMonths).toEqual([
+      '2026-10',
+      '2026-11',
+    ]);
+    await repo.setSkipped(item.id, '2026-10', false);
+    const back = await repo.setSkipped(item.id, '2026-11', false);
+    expect(back).not.toHaveProperty('skippedMonths');
+    expect(await repo.getMeta('lastDataChangeAt')).toBe(back.updatedAt);
+  });
+
+  it('only for monthly and weekly expenses', async () => {
+    const yearly = await repo.addBudgetItem({ ...rent, repeat: 'yearly' });
+    const salary = await repo.addBudgetItem({
+      kind: 'income',
+      name: 'Sueldo',
+      amount: 1,
+      currency: 'MXN',
+      month: '2026-01',
+      repeat: 'monthly',
+    });
+    await expectRepositoryError(repo.setSkipped(yearly.id, '2026-10', true), 'INVALID_BUDGET_ITEM');
+    await expectRepositoryError(repo.setSkipped(salary.id, '2026-10', true), 'INVALID_BUDGET_ITEM');
+    await expectRepositoryError(repo.setSkipped('nope', '2026-10', true), 'BUDGET_ITEM_NOT_FOUND');
+  });
+
+  it('a change from a month on splits the skipped months between both versions', async () => {
+    const item = await repo.addBudgetItem({ ...rent, skippedMonths: ['2026-05', '2026-12'] });
+    const next = await repo.updateBudgetItem(
+      item.id,
+      { ...rent, amount: 900_000, skippedMonths: ['2026-05', '2026-12'] },
+      '2026-10',
+    );
+    expect(next.skippedMonths).toEqual(['2026-12']);
+    expect((await repo.getBudgetItem(item.id))?.skippedMonths).toEqual(['2026-05']);
+  });
+});
+
 describe('weekly items', () => {
   it('keep their weekday when changed from a later month on', async () => {
     const gas = await repo.addBudgetItem({

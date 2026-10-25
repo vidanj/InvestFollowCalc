@@ -5,6 +5,7 @@ import {
   EXPENSE_CATEGORIES,
   occurrencesIn,
   REPEATS,
+  scheduledIn,
   summarizeMonth,
   summarizeYear,
   validateBudgetItem,
@@ -142,8 +143,9 @@ const itemArb: fc.Arbitrary<BudgetItem> = fc
     day: fc.integer({ min: 1, max: 28 }),
     repeat: fc.constantFrom(...REPEATS),
     length: fc.option(fc.integer({ min: 0, max: 24 }), { nil: null }),
+    skips: fc.uniqueArray(fc.integer({ min: 0, max: 30 }), { maxLength: 4 }),
   })
-  .map(({ id, kind, amount, currency, category, start, day, repeat, length }) => {
+  .map(({ id, kind, amount, currency, category, start, day, repeat, length, skips }) => {
     const month = addMonthsToYearMonth('2026-01', start);
     const base = {
       id,
@@ -157,7 +159,19 @@ const itemArb: fc.Arbitrary<BudgetItem> = fc
         ? { endMonth: addMonthsToYearMonth(month, length) }
         : {}),
     };
-    return kind === 'income' ? { ...base, kind } : { ...base, kind, category };
+    if (kind === 'income') return { ...base, kind };
+    // Monthly and weekly expenses may skip some months.
+    const skippedMonths = [...skips]
+      .sort((a, b) => a - b)
+      .map((offset) => addMonthsToYearMonth(month, offset));
+    return repeat === 'monthly' || repeat === 'weekly'
+      ? {
+          ...base,
+          kind,
+          category,
+          ...(skippedMonths.length > 0 ? { skippedMonths } : {}),
+        }
+      : { ...base, kind, category };
   });
 
 describe('budget invariants', () => {
@@ -190,6 +204,11 @@ describe('budget invariants', () => {
               )
               .reduce((s, i) => s + i.amount * occurrencesIn(i, month), 0);
             expect(summary.fixedCharges).toBe(summary.expenses - oneOffs);
+            // A skipped item is listed apart and never counted.
+            for (const { item } of summary.skippedItems) {
+              expect(occurrencesIn(item, month)).toBe(0);
+              expect(summary.expenseItems.some((e) => e.item.id === item.id)).toBe(false);
+            }
           }
         },
       ),
@@ -204,7 +223,8 @@ describe('budget invariants', () => {
         if (item.repeat !== 'weekly' || item.endMonth !== undefined) return;
         const from = addMonthsToYearMonth(item.month, offset + 1);
         const months = Array.from({ length: 12 }, (_, i) => addMonthsToYearMonth(from, i));
-        const charges = months.reduce((s, m) => s + occurrencesIn(item, m), 0);
+        // The cadence itself (skipped months aside).
+        const charges = months.reduce((s, m) => s + scheduledIn(item, m), 0);
         expect([52, 53]).toContain(charges);
       }),
       { numRuns: 200 },

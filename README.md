@@ -50,6 +50,8 @@ muestra:
 
 - **Cargos fijos:** cuánto debes tener disponible en tu cuenta para los cargos automáticos del mes
   (lo que se repite + pagos de créditos).
+- **"No lo pago este mes":** si un mes decides no pagar una suscripción u otro gasto mensual o
+  semanal, márcalo en la lista; ese mes no cuenta y el siguiente vuelve a contar.
 - **Inversión sugerida:** un porcentaje de tus ingresos (20% por omisión), nunca más de lo que te
   queda, y **cuánto generaría** si lo inviertes cada mes con el rendimiento real de tus inversiones
   (o una tasa que tú escribas), a 1, 3, 5 y 10 años.

@@ -160,6 +160,27 @@ describe('budget item form', () => {
     }
   });
 
+  it('carries skipped months through an edit, and drops them when they no longer apply', () => {
+    const streaming = {
+      id: 's',
+      kind: 'expense' as const,
+      name: 'Streaming',
+      amount: 29_900,
+      currency: 'MXN' as const,
+      category: 'subscriptions' as const,
+      month: '2026-01',
+      repeat: 'monthly' as const,
+      skippedMonths: ['2026-10'],
+    };
+    const values = valuesFromItem(streaming);
+    const kept = parseBudgetItemForm(values);
+    expect(kept.ok && kept.draft.skippedMonths).toEqual(['2026-10']);
+    const yearly = parseBudgetItemForm({ ...values, repeat: 'yearly' });
+    expect(yearly.ok && yearly.draft).not.toHaveProperty('skippedMonths');
+    const income = parseBudgetItemForm({ ...values, kind: 'income' });
+    expect(income.ok && income.draft).not.toHaveProperty('skippedMonths');
+  });
+
   it('reads the month from the URL', () => {
     expect(monthParam('2026-07', '2026-10')).toBe('2026-07');
     expect(monthParam('2026-13', '2026-10')).toBe('2026-10');

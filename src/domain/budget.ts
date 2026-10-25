@@ -52,6 +52,11 @@ interface BudgetItemBase {
   firstDate?: IsoDate;
   /** Last month (included) of a repeating item; absent while it keeps repeating. */
   endMonth?: YearMonth;
+  /**
+   * Monthly or weekly expenses only: months the user decided not to pay (e.g. a subscription
+   * paused for a month). They count 0 that month and come back the next.
+   */
+  skippedMonths?: YearMonth[];
 }
 
 export interface IncomeItem extends BudgetItemBase {
@@ -67,6 +72,7 @@ export type BudgetItem = IncomeItem | ExpenseItem;
 export type BudgetItemDraft = DistributiveOmit<BudgetItem, 'id'>;
 
 type Schedule = Pick<BudgetItem, 'month' | 'repeat' | 'firstDate' | 'endMonth'>;
+type Skippable = Schedule & Pick<BudgetItem, 'kind' | 'skippedMonths'>;
 
 function lastDayOf(month: YearMonth): IsoDate {
   return addDays(addMonths(`${month}-01`, 1), -1);
@@ -79,11 +85,11 @@ function nextWeekly(first: IsoDate, from: IsoDate): IsoDate {
 }
 
 /**
- * How many times the item is charged (or paid) in `month`: once for one-offs in their month,
+ * How many times the item is due in `month` by its schedule: once for one-offs in their month,
  * monthly items every month, yearly items in their month every 12 months, and weekly items the
  * real number of times their 7-day cadence lands in the month (4 or 5).
  */
-export function occurrencesIn(item: Schedule, month: YearMonth): number {
+export function scheduledIn(item: Schedule, month: YearMonth): number {
   if (compareYearMonths(month, item.month) < 0) return 0;
   if (item.repeat === 'none') return month === item.month ? 1 : 0;
   if (item.endMonth !== undefined && compareYearMonths(month, item.endMonth) > 0) return 0;
@@ -101,9 +107,46 @@ export function occurrencesIn(item: Schedule, month: YearMonth): number {
   }
 }
 
-/** Whether the item counts in `month`. */
+/** Only monthly and weekly expenses can skip a month. */
+export function canSkip(item: Pick<BudgetItem, 'kind' | 'repeat'>): boolean {
+  return item.kind === 'expense' && (item.repeat === 'monthly' || item.repeat === 'weekly');
+}
+
+/** The user decided not to pay this item in `month`. */
+export function isSkippedIn(item: Skippable, month: YearMonth): boolean {
+  return canSkip(item) && (item.skippedMonths?.includes(month) ?? false);
+}
+
+/** How many times the item really counts in `month`: its schedule, or 0 in a skipped month. */
+export function occurrencesIn(item: Skippable, month: YearMonth): number {
+  return isSkippedIn(item, month) ? 0 : scheduledIn(item, month);
+}
+
+/** Whether the item is due in `month` (skipped or not): it is listed there. */
 export function isActiveIn(item: Schedule, month: YearMonth): boolean {
-  return occurrencesIn(item, month) > 0;
+  return scheduledIn(item, month) > 0;
+}
+
+/** `months` with `month` added (`skip`) or removed, sorted; `undefined` when none remain. */
+export function withSkipped(
+  months: readonly YearMonth[] | undefined,
+  month: YearMonth,
+  skip: boolean,
+): YearMonth[] | undefined {
+  const next = [
+    ...new Set([...(months ?? []).filter((m) => m !== month), ...(skip ? [month] : [])]),
+  ].sort(compareYearMonths);
+  return next.length > 0 ? next : undefined;
+}
+
+/** `item` keeping only the skipped months that pass `keep`. */
+function filterSkipped<T extends Pick<BudgetItem, 'skippedMonths'>>(
+  item: T,
+  keep: (month: YearMonth) => boolean,
+): T {
+  const { skippedMonths, ...rest } = item;
+  const kept = skippedMonths?.filter(keep) ?? [];
+  return (kept.length > 0 ? { ...rest, skippedMonths: kept } : rest) as T;
 }
 
 /**
@@ -118,7 +161,8 @@ export function canSplitAt(item: Schedule, month: YearMonth): boolean {
 
 /** The item as it was before `month`: it stops repeating the month before. */
 export function endBefore<T extends BudgetItem>(item: T, month: YearMonth): T {
-  return { ...item, endMonth: addMonthsToYearMonth(month, -1) };
+  const ended = filterSkipped(item, (m) => compareYearMonths(m, month) < 0);
+  return { ...ended, endMonth: addMonthsToYearMonth(month, -1) };
 }
 
 /**
@@ -126,8 +170,9 @@ export function endBefore<T extends BudgetItem>(item: T, month: YearMonth): T {
  * weekday: its first date moves to the first charge of its cadence inside `month`.
  */
 export function startingIn<T extends BudgetItemDraft>(draft: T, month: YearMonth): T {
-  if (draft.repeat !== 'weekly' || draft.firstDate === undefined) return { ...draft, month };
-  return { ...draft, month, firstDate: nextWeekly(draft.firstDate, `${month}-01`) };
+  const later = filterSkipped(draft, (m) => compareYearMonths(m, month) >= 0);
+  if (later.repeat !== 'weekly' || later.firstDate === undefined) return { ...later, month };
+  return { ...later, month, firstDate: nextWeekly(later.firstDate, `${month}-01`) };
 }
 
 // --- Credit payments in the budget ---
@@ -221,6 +266,8 @@ export interface MonthSummary {
   byCategory: CategoryTotal[];
   incomeItems: MonthEntry<IncomeItem>[];
   expenseItems: MonthEntry<ExpenseItem>[];
+  /** Expenses due this month that the user skipped; `amount` is what they would have cost. */
+  skippedItems: MonthEntry<ExpenseItem>[];
   credits: CreditMonthPayment[];
 }
 
@@ -228,14 +275,16 @@ const sum = (values: readonly number[]): number => values.reduce((a, b) => a + b
 const byAmountDesc = (a: { amount: Cents }, b: { amount: Cents }) => b.amount - a.amount;
 
 function summarize(data: BudgetData, month: YearMonth, currency: Currency): MonthSummary {
-  const entries = data.items
+  const due = data.items
     .filter((item) => item.currency === currency)
     .map((item) => {
-      const times = occurrencesIn(item, month);
+      const times = scheduledIn(item, month);
       return { item, times, amount: item.amount * times };
     })
     .filter((entry) => entry.times > 0)
     .sort(byAmountDesc);
+  const skippedItems = due.filter((e): e is MonthEntry<ExpenseItem> => isSkippedIn(e.item, month));
+  const entries = due.filter((e) => !isSkippedIn(e.item, month));
   const incomeItems = entries.filter((e): e is MonthEntry<IncomeItem> => e.item.kind === 'income');
   const expenseItems = entries.filter(
     (e): e is MonthEntry<ExpenseItem> => e.item.kind === 'expense',
@@ -274,6 +323,7 @@ function summarize(data: BudgetData, month: YearMonth, currency: Currency): Mont
     byCategory,
     incomeItems,
     expenseItems,
+    skippedItems,
     credits,
   };
 }
@@ -281,7 +331,8 @@ function summarize(data: BudgetData, month: YearMonth, currency: Currency): Mont
 /** One summary per currency with something in `month`. Currencies are never mixed. */
 export function summarizeMonth(data: BudgetData, month: YearMonth): MonthSummary[] {
   return CURRENCIES.map((currency) => summarize(data, month, currency)).filter(
-    (s) => s.incomeItems.length + s.expenseItems.length + s.credits.length > 0,
+    (s) =>
+      s.incomeItems.length + s.expenseItems.length + s.skippedItems.length + s.credits.length > 0,
   );
 }
 
@@ -364,6 +415,7 @@ export type BudgetIssueCode =
   | 'INVALID_CATEGORY'
   | 'INVALID_REPEAT'
   | 'INVALID_FIRST_DATE'
+  | 'INVALID_SKIP'
   | 'END_BEFORE_START'
   | 'END_WITHOUT_RECURRING';
 
@@ -390,6 +442,13 @@ export function validateBudgetItem(item: BudgetItemDraft): BudgetIssueCode[] {
     }
   } else if (item.firstDate !== undefined) {
     issues.push('INVALID_FIRST_DATE');
+  }
+  if (item.skippedMonths !== undefined) {
+    const { skippedMonths } = item;
+    const sortedUnique = skippedMonths.every(
+      (m, i) => isYearMonth(m) && (i === 0 || compareYearMonths(skippedMonths[i - 1]!, m) < 0),
+    );
+    if (!canSkip(item) || skippedMonths.length === 0 || !sortedUnique) issues.push('INVALID_SKIP');
   }
   if (item.endMonth !== undefined) {
     if (item.repeat === 'none') issues.push('END_WITHOUT_RECURRING');

@@ -9,13 +9,16 @@ import { Stat } from '../../components/Stat';
 import { toneOf } from '../../components/tone';
 import { useAccountsWithEvents, useBudgetItems, useCredits, useInvestPlan } from '../../db/hooks';
 import type { AccountWithEvents } from '../../db/repository';
+import { useRepository } from '../../db/repositoryContext';
 import type { CreditRecord } from '../../db/schema';
 import {
   firstBudgetMonth,
   monthlyTotals,
   summarizeMonth,
   summarizeYear,
+  canSkip,
   type BudgetData,
+  type ExpenseItem,
   type MonthEntry,
   type MonthSummary,
 } from '../../domain/budget';
@@ -91,14 +94,23 @@ function entryDetail({ item, times }: MonthEntry): string {
   return item.kind === 'expense' ? `${t.categories[item.category]} · ${when}` : when;
 }
 
+interface SkipToggle {
+  checked: boolean;
+  ariaLabel: string;
+  onChange: (checked: boolean) => void;
+}
+
 interface EntryRowProps {
   to: string;
   name: string;
   detail: string;
   amount: string;
+  /** Monthly and weekly expenses: "not paid this month" checkbox, outside the link. */
+  skip?: SkipToggle;
 }
 
-function EntryRow({ to, name, detail, amount }: EntryRowProps) {
+function EntryRow({ to, name, detail, amount, skip }: EntryRowProps) {
+  const skipped = skip?.checked ?? false;
   return (
     <li>
       <Link
@@ -106,11 +118,33 @@ function EntryRow({ to, name, detail, amount }: EntryRowProps) {
         className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800"
       >
         <span className="min-w-0 text-sm">
-          <span className="block truncate font-medium">{name}</span>
+          <span
+            className={`block truncate font-medium ${skipped ? 'text-slate-500 dark:text-slate-400' : ''}`}
+          >
+            {name}
+          </span>
           <span className="block text-xs text-slate-600 dark:text-slate-400">{detail}</span>
         </span>
-        <span className="text-right text-sm tabular-nums">{amount}</span>
+        <span
+          className={`text-right text-sm tabular-nums ${skipped ? 'text-slate-500 line-through dark:text-slate-400' : ''}`}
+        >
+          {amount}
+        </span>
       </Link>
+      {skip && (
+        <label className="-mt-1 flex w-fit cursor-pointer items-center gap-2 px-4 pt-1 pb-3 text-xs text-slate-600 dark:text-slate-400">
+          <input
+            type="checkbox"
+            checked={skip.checked}
+            aria-label={skip.ariaLabel}
+            onChange={(e) => {
+              skip.onChange(e.target.checked);
+            }}
+            className="h-4 w-4 accent-teal-700"
+          />
+          {t.skipLabel}
+        </label>
+      )}
     </li>
   );
 }
@@ -210,7 +244,23 @@ function CurrencyBudget({
     const from = compareYearMonths(first, earliest) > 0 ? first : earliest;
     return monthlyTotals(data, currency, monthRange(from, month));
   }, [data, currency, month]);
+  const repository = useRepository();
   const editPath = (id: string) => `/budget/items/${id}?month=${month}`;
+  // Skipped expenses stay in their place (same order as when paid), so the list never jumps.
+  const expenseRows = [
+    ...summary.expenseItems.map((entry) => ({ entry, skipped: false })),
+    ...summary.skippedItems.map((entry) => ({ entry, skipped: true })),
+  ].sort((a, b) => b.entry.amount - a.entry.amount);
+  const skipToggle = (item: ExpenseItem, checked: boolean): SkipToggle | undefined =>
+    canSkip(item)
+      ? {
+          checked,
+          ariaLabel: t.skipAria(item.name, formatMonth(month)),
+          onChange: (skip) => {
+            void repository.setSkipped(item.id, month, skip);
+          },
+        }
+      : undefined;
 
   return (
     <section className="flex flex-col gap-4" aria-labelledby={`budget-${currency}`}>
@@ -235,13 +285,16 @@ function CurrencyBudget({
         ))}
       </EntryList>
       <EntryList title={t.expensesTitle}>
-        {summary.expenseItems.map((entry) => (
+        {expenseRows.map(({ entry, skipped }) => (
           <EntryRow
             key={entry.item.id}
             to={editPath(entry.item.id)}
             name={entry.item.name}
-            detail={entryDetail(entry)}
+            detail={
+              skipped ? t.skippedDetail(formatMoney(entry.amount, currency)) : entryDetail(entry)
+            }
             amount={formatMoney(entry.amount, currency)}
+            skip={skipToggle(entry.item, skipped)}
           />
         ))}
       </EntryList>

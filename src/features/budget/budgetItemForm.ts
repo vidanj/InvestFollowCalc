@@ -1,5 +1,6 @@
 import {
   BUDGET_NAME_MAX_LENGTH,
+  canSkip,
   startingIn,
   validateBudgetItem,
   type BudgetItem,
@@ -28,6 +29,8 @@ export interface BudgetItemFormValues {
   firstDate: string;
   hasEnd: boolean;
   endMonth: YearMonth;
+  /** Months marked as skipped from the month list; not edited here, only carried along. */
+  skippedMonths: YearMonth[];
 }
 
 export interface BudgetItemFormErrors {
@@ -60,6 +63,7 @@ export function emptyBudgetItemValues(
     firstDate: toYearMonth(today) === month ? today : `${month}-01`,
     hasEnd: false,
     endMonth: month,
+    skippedMonths: [],
   };
 }
 
@@ -75,6 +79,7 @@ export function valuesFromItem(item: BudgetItem): BudgetItemFormValues {
     firstDate: item.firstDate ?? `${item.month}-01`,
     hasEnd: item.endMonth !== undefined,
     endMonth: item.endMonth ?? item.month,
+    skippedMonths: item.skippedMonths ?? [],
   };
 }
 
@@ -121,6 +126,10 @@ export function parseBudgetItemForm(
     repeat: values.repeat,
     ...(weekly ? { firstDate: values.firstDate } : {}),
     ...(withEnd ? { endMonth: values.endMonth } : {}),
+    // Kept only while the item can still skip months (monthly or weekly expenses).
+    ...(canSkip(values) && values.skippedMonths.length > 0
+      ? { skippedMonths: values.skippedMonths }
+      : {}),
   };
   const parsed: BudgetItemDraft =
     values.kind === 'income'

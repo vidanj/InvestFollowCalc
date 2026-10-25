@@ -133,6 +133,10 @@ El código está en [src/domain/budget.ts](../src/domain/budget.ts).
   Ejemplo semanal: gasolina de 500 cada viernes desde el 2 de octubre de 2026 → octubre cuenta 5
   cargos (2, 9, 16, 23 y 30): 2,500; noviembre 4 cargos: 2,000.
 
+- Un gasto **mensual o semanal** se puede marcar como **"No lo pago este mes"** (por ejemplo, una
+  suscripción que pausas un mes): ese mes cuenta 0 (en los semanales, ninguno de sus cargos del mes)
+  y al mes siguiente vuelve a contar solo. Sigue apareciendo en la lista para poder desmarcarlo. No
+  aplica a gastos anuales, de una sola vez ni a ingresos.
 - Cambiar un concepto que se repite "desde este mes" no toca los meses anteriores: el concepto
   original termina el mes anterior y la versión nueva empieza en el mes que se está viendo (uno
   semanal conserva su día de la semana). Lo mismo al "dejar de repetir desde este mes".
@@ -154,7 +158,8 @@ Por cada moneda (USD y MXN nunca se suman entre sí):
 | **Cargos fijos**      | gastos que se repiten (semanales, mensuales y anuales de ese mes) + pagos de créditos |
 
 **Cargos fijos** es el recordatorio de cuánto dinero tener disponible en la cuenta para los cargos
-automáticos del mes; no incluye los gastos de una sola vez.
+automáticos del mes; no incluye los gastos de una sola vez ni los que marcaste como no pagados ese
+mes. Un gasto omitido tampoco cuenta en los gastos, en lo que te queda ni en "Tu año".
 
 Las pruebas verifican con cientos de presupuestos aleatorios que **te queda = ingresos − gastos**,
 que **la suma de las categorías = gastos**, que **cargos fijos = gastos − gastos de una sola vez** y
