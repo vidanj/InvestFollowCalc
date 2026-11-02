@@ -13,7 +13,13 @@ import { useBudgetItem } from '../../db/hooks';
 import { requestPersistentStorage } from '../../db/persistence';
 import { useRepository } from '../../db/repositoryContext';
 import type { BudgetItemRecord } from '../../db/schema';
-import { canSplitAt, EXPENSE_CATEGORIES, REPEATS, type Repeat } from '../../domain/budget';
+import {
+  canHaveDueDay,
+  canSplitAt,
+  EXPENSE_CATEGORIES,
+  REPEATS,
+  type Repeat,
+} from '../../domain/budget';
 import { toIsoDate } from '../../domain/dates';
 import { toYearMonth, type YearMonth } from '../../domain/months';
 import { CURRENCIES } from '../../domain/types';
@@ -225,6 +231,21 @@ function BudgetItemForm({ viewMonth, kind, editing }: BudgetItemFormProps) {
               }}
             />
           ))}
+        {canHaveDueDay(values) && (
+          <TextField
+            label={t.dueDay}
+            help={t.dueDayHelp}
+            optional
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={2}
+            value={values.dueDay}
+            onChange={(e) => {
+              set({ dueDay: e.target.value });
+            }}
+            error={errors.dueDay}
+          />
+        )}
         {values.repeat !== 'none' && (
           <>
             <CheckboxField

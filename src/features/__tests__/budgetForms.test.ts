@@ -181,6 +181,54 @@ describe('budget item form', () => {
     expect(income.ok && income.draft).not.toHaveProperty('skippedMonths');
   });
 
+  it('takes an optional charge day for monthly and yearly expenses', () => {
+    const values = {
+      ...emptyBudgetItemValues('expense', '2026-10', TODAY),
+      name: 'Renta',
+      amount: '8,000',
+      repeat: 'monthly' as const,
+    };
+    expect(emptyBudgetItemValues('expense', '2026-10', TODAY).dueDay).toBe('');
+    const withDay = parseBudgetItemForm({ ...values, dueDay: ' 5 ' });
+    expect(withDay.ok && withDay.draft.dueDay).toBe(5);
+    const yearly = parseBudgetItemForm({ ...values, repeat: 'yearly', dueDay: '31' });
+    expect(yearly.ok && yearly.draft.dueDay).toBe(31);
+    const without = parseBudgetItemForm(values);
+    expect(without.ok && without.draft).not.toHaveProperty('dueDay');
+    for (const dueDay of ['0', '32', '1.5', 'cinco', '-2']) {
+      expect(parseBudgetItemForm({ ...values, dueDay }), dueDay).toEqual({
+        ok: false,
+        errors: { dueDay: strings.errors.invalidDueDay },
+      });
+    }
+  });
+
+  it('drops the charge day when it no longer applies, and keeps it from a later month on', () => {
+    const stored = {
+      kind: 'expense' as const,
+      name: 'Renta',
+      amount: 800_000,
+      currency: 'MXN' as const,
+      category: 'housing' as const,
+      month: '2026-01',
+      repeat: 'monthly' as const,
+      dueDay: 5,
+    };
+    const values = valuesFromItem({ id: 'r', ...stored });
+    expect(values.dueDay).toBe('5');
+    const kept = parseBudgetItemForm(values);
+    expect(kept.ok && kept.draft).toEqual(stored);
+    const later = parseBudgetItemForm({ ...values, dueDay: '10' }, '2026-10');
+    expect(later.ok && later.draft).toMatchObject({ month: '2026-10', dueDay: 10 });
+    const weekly = parseBudgetItemForm({ ...values, repeat: 'weekly', firstDate: '2026-01-07' });
+    expect(weekly.ok && weekly.draft).not.toHaveProperty('dueDay');
+    const oneOff = parseBudgetItemForm({ ...values, repeat: 'none' });
+    expect(oneOff.ok && oneOff.draft).not.toHaveProperty('dueDay');
+    // A day left in the field of an income is ignored, even if it is not valid.
+    const income = parseBudgetItemForm({ ...values, kind: 'income', dueDay: '99' });
+    expect(income.ok && income.draft).not.toHaveProperty('dueDay');
+  });
+
   it('reads the month from the URL', () => {
     expect(monthParam('2026-07', '2026-10')).toBe('2026-07');
     expect(monthParam('2026-13', '2026-10')).toBe('2026-10');

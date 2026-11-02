@@ -49,7 +49,8 @@ mes** o **cada año** (una suscripción anual cuenta completa en su mes). Ademá
 muestra:
 
 - **Cargos fijos:** cuánto debes tener disponible en tu cuenta para los cargos automáticos del mes
-  (lo que se repite + pagos de créditos).
+  (lo que se repite + pagos de créditos), y **día por día** cuánto tener antes de cada cargo si les
+  pones el día en que se cobran.
 - **"No lo pago este mes":** si un mes decides no pagar una suscripción u otro gasto mensual o
   semanal, márcalo en la lista; ese mes no cuenta y el siguiente vuelve a contar.
 - **Inversión sugerida:** un porcentaje de tus ingresos (20% por omisión), nunca más de lo que te

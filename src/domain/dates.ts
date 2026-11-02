@@ -63,3 +63,10 @@ export function addMonths(date: IsoDate, months: number): IsoDate {
   target.setUTCDate(Math.min(day, lastDay));
   return target.toISOString().slice(0, 10);
 }
+
+/** `date`'s month with `day`, clamped to the month's length (day 31 in November → the 30th). */
+export function withDay(date: IsoDate, day: number): IsoDate {
+  const monthStart = `${date.slice(0, 8)}01`;
+  const lastDay = Number(addDays(addMonths(monthStart, 1), -1).slice(8));
+  return `${date.slice(0, 8)}${String(Math.min(day, lastDay)).padStart(2, '0')}`;
+}

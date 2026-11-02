@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canHaveDueDay,
   canSplitAt,
+  chargeDayPassed,
   creditMonthPayments,
   endBefore,
   firstBudgetMonth,
+  fixedChargeDays,
   isActiveIn,
   monthlyTotals,
   isSkippedIn,
   occurrencesIn,
+  pendingCharges,
   scheduledIn,
   startingIn,
   summarizeMonth,
@@ -95,6 +99,12 @@ describe('repeating items', () => {
   it('one-off items count only in their month', () => {
     expect(isActiveIn(items[1]!, '2026-10')).toBe(true);
     expect(isActiveIn(items[1]!, '2026-11')).toBe(false);
+  });
+
+  it('keep their charge day when changed from a later month on', () => {
+    const rent = expense('Renta', 8_000, 'housing', { dueDay: 5 });
+    expect(endBefore(rent, '2026-10').dueDay).toBe(5);
+    expect(startingIn(rent, '2026-10').dueDay).toBe(5);
   });
 
   it('can be changed from a later month on, keeping the past', () => {
@@ -242,6 +252,7 @@ describe('credit payments by month', () => {
         month: '2026-10',
         amount: cents(1_000),
         numbers: [1],
+        charges: [{ date: '2026-10-15', amount: cents(1_000) }],
         totalPayments: 12,
       },
       {
@@ -251,11 +262,99 @@ describe('credit payments by month', () => {
         month: '2026-10',
         amount: cents(500),
         numbers: [1],
+        charges: [{ date: '2026-10-17', amount: cents(500) }],
         totalPayments: 6,
       },
     ]);
     const november = payments.find((p) => p.creditId === 'loan' && p.month === '2026-11');
-    expect(november).toMatchObject({ amount: cents(1_000), numbers: [2, 3] });
+    expect(november).toMatchObject({
+      amount: cents(1_000),
+      numbers: [2, 3],
+      charges: [
+        { date: '2026-11-02', amount: cents(500) },
+        { date: '2026-11-17', amount: cents(500) },
+      ],
+    });
+  });
+});
+
+describe('fixed charges by day', () => {
+  const november: BudgetItem[] = [
+    income('Sueldo', 30_000),
+    expense('Renta', 8_000, 'housing', { dueDay: 1 }),
+    // Day 31 in a 30-day month: charged on the 30th.
+    expense('Internet', 600, 'services', { dueDay: 31 }),
+    expense('Gimnasio', 500, 'health'),
+    expense('Música', 150, 'subscriptions', { dueDay: 5 }),
+    expense('Streaming', 299, 'subscriptions', { dueDay: 5 }),
+    expense('Gasolina', 500, 'transport', {
+      month: '2026-10',
+      repeat: 'weekly',
+      firstDate: '2026-10-02',
+    }),
+    expense('Seguro', 3_000, 'other', { month: '2026-11', repeat: 'yearly', dueDay: 20 }),
+    expense('Café', 85.5, 'small', { month: '2026-11', repeat: 'none' }),
+    expense('Revista', 120, 'leisure', { dueDay: 10, skippedMonths: ['2026-11'] }),
+  ];
+  const novemberData: BudgetData = {
+    items: november,
+    creditPayments: creditMonthPayments([msi, loan]),
+  };
+  const [summary] = summarizeMonth(novemberData, '2026-11');
+  const days = fixedChargeDays(summary!);
+
+  it('lists each charge on its day, with what to have before it', () => {
+    expect(days.map((d) => [d.date, d.amount, d.cumulative])).toEqual([
+      [null, cents(500), cents(500)], // Gimnasio: no day, counted from the 1st
+      ['2026-11-01', cents(8_000), cents(8_500)],
+      ['2026-11-02', cents(500), cents(9_000)], // loan, payment 2
+      ['2026-11-05', cents(449), cents(9_449)],
+      ['2026-11-06', cents(500), cents(9_949)],
+      ['2026-11-13', cents(500), cents(10_449)],
+      ['2026-11-15', cents(1_000), cents(11_449)], // MSI
+      ['2026-11-17', cents(500), cents(11_949)], // loan, payment 3
+      ['2026-11-20', cents(3_500), cents(15_449)],
+      ['2026-11-27', cents(500), cents(15_949)],
+      ['2026-11-30', cents(600), cents(16_549)],
+    ]);
+    // Adds up to the month's fixed charges: one-offs, income and skipped expenses are left out.
+    expect(days.at(-1)?.cumulative).toBe(summary?.fixedCharges);
+  });
+
+  it('groups the charges of the same day, largest first', () => {
+    const day = (date: string) => days.find((d) => d.date === date)?.charges;
+    expect(day('2026-11-05')?.map((c) => c.name)).toEqual(['Streaming', 'Música']);
+    expect(day('2026-11-20')).toEqual([
+      { name: 'Seguro', amount: cents(3_000), source: { kind: 'item', id: 'Seguro' } },
+      { name: 'Gasolina', amount: cents(500), source: { kind: 'item', id: 'Gasolina' } },
+    ]);
+    expect(day('2026-11-15')).toEqual([
+      { name: 'Televisión', amount: cents(1_000), source: { kind: 'credit', id: 'tv' } },
+    ]);
+  });
+
+  it('puts a yearly charge only in its month, and clamps the day to the month', () => {
+    const [december] = summarizeMonth(novemberData, '2026-12');
+    const names = fixedChargeDays(december!).flatMap((d) => d.charges.map((c) => c.name));
+    expect(names).not.toContain('Seguro');
+    const internet = [expense('Internet', 600, 'services', { dueDay: 31 })];
+    const [february] = summarizeMonth({ items: internet, creditPayments: [] }, '2028-02');
+    expect(fixedChargeDays(february!).map((d) => d.date)).toEqual(['2028-02-29']);
+  });
+
+  it('has nothing to list without repeating expenses or credits', () => {
+    const [oneOff] = summarizeMonth({ items: [november[8]!], creditPayments: [] }, '2026-11');
+    expect(fixedChargeDays(oneOff!)).toEqual([]);
+  });
+
+  it('tells what is still to be charged from a day on', () => {
+    expect(pendingCharges(days, '2026-11-01')).toBe(cents(16_549));
+    // From the 15th: the charges without a day (unknown), the 15th itself and the rest.
+    expect(pendingCharges(days, '2026-11-15')).toBe(cents(500 + 1_000 + 500 + 3_500 + 500 + 600));
+    expect(pendingCharges(days, '2026-12-01')).toBe(cents(500));
+    expect(chargeDayPassed(days[0]!, '2026-12-01')).toBe(false);
+    expect(chargeDayPassed(days[1]!, '2026-11-01')).toBe(false);
+    expect(chargeDayPassed(days[1]!, '2026-11-02')).toBe(true);
   });
 });
 
@@ -406,6 +505,25 @@ describe('validateBudgetItem', () => {
     expect(validateBudgetItem({ ...draft, repeat: 'none', skippedMonths: ['2026-01'] })).toEqual([
       'INVALID_SKIP',
     ]);
+  });
+
+  it('accepts a charge day only on monthly and yearly expenses, from 1 to 31', () => {
+    expect(validateBudgetItem({ ...draft, dueDay: 1 })).toEqual([]);
+    expect(validateBudgetItem({ ...draft, repeat: 'yearly', dueDay: 31 })).toEqual([]);
+    for (const dueDay of [0, 32, 1.5, -3, Number.NaN]) {
+      expect(validateBudgetItem({ ...draft, dueDay }), String(dueDay)).toEqual(['INVALID_DUE_DAY']);
+    }
+    const weekly = { ...draft, repeat: 'weekly' as const, firstDate: '2026-01-07', dueDay: 7 };
+    expect(validateBudgetItem(weekly)).toEqual(['INVALID_DUE_DAY']);
+    expect(validateBudgetItem({ ...draft, repeat: 'none', dueDay: 7 })).toEqual([
+      'INVALID_DUE_DAY',
+    ]);
+    expect(validateBudgetItem(income('Sueldo', 30_000, { dueDay: 15 }))).toEqual([
+      'INVALID_DUE_DAY',
+    ]);
+    expect(canHaveDueDay({ kind: 'expense', repeat: 'monthly' })).toBe(true);
+    expect(canHaveDueDay({ kind: 'expense', repeat: 'weekly' })).toBe(false);
+    expect(canHaveDueDay({ kind: 'income', repeat: 'monthly' })).toBe(false);
   });
 
   it('incomes have no category', () => {

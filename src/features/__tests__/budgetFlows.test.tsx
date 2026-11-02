@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Repository } from '../../db/repository';
 import { minimumPayment, type CreditDraft } from '../../domain/credit';
 import { formatMoney } from '../../domain/money';
@@ -106,7 +106,8 @@ describe('monthly budget', () => {
       await screen.findByRole('heading', { name: formatMonth(addMonthsToYearMonth(thisMonth, 1)) }),
     ).toBeVisible();
     expect(screen.queryByText('Regalo')).toBeNull();
-    expect(screen.getByText('Renta')).toBeVisible();
+    const expenses = screen.getByRole('region', { name: b.expensesTitle });
+    expect(within(expenses).getByText('Renta')).toBeVisible();
     expect(screen.getByText(b.projection)).toBeVisible();
 
     await user.click(screen.getByRole('link', { name: b.currentMonth }));
@@ -368,6 +369,69 @@ describe('repeats, fixed charges and the year', () => {
     const title = await screen.findByText(b.fixedTitle(formatMonth(thisMonth)));
     // Rent 8,000 + the credit's 1,000; the one-off gift is left out.
     expect(within(title.parentElement!).getByText('$9,000.00')).toBeVisible();
+  });
+
+  it('adds a monthly expense with its charge day', async () => {
+    const { user, repository } = renderRoute(`/budget/items/new?kind=expense&month=${thisMonth}`);
+
+    await user.type(await screen.findByLabelText(bi.name), 'Renta');
+    await user.type(screen.getByLabelText(bi.amount), '8,000');
+    await user.selectOptions(screen.getByLabelText(bi.category), b.categories.housing);
+    // A one-off has no charge day.
+    expect(screen.queryByLabelText(bi.dueDay, { exact: false })).toBeNull();
+    await user.selectOptions(screen.getByLabelText(bi.repeat), bi.repeats.monthly);
+    const dueDay = screen.getByLabelText(bi.dueDay, { exact: false });
+    await user.type(dueDay, '40');
+    await user.click(screen.getByRole('button', { name: strings.common.save }));
+    expect(await screen.findByText(strings.errors.invalidDueDay)).toBeVisible();
+
+    await user.clear(dueDay);
+    await user.type(dueDay, '5');
+    await user.click(screen.getByRole('button', { name: strings.common.save }));
+
+    await screen.findByRole('heading', { name: b.title });
+    expect(await repository.listBudgetItems()).toMatchObject([{ name: 'Renta', dueDay: 5 }]);
+    expect(await screen.findByText(`${b.categories.housing} · ${b.everyMonthOn(5)}`)).toBeVisible();
+    const table = screen.getByRole('table', { name: b.fixedDaysCaption });
+    expect(within(table).getByRole('rowheader', { name: /Día 5/ })).toBeVisible();
+  });
+
+  it('lists the fixed charges by day with what to have before each, marking past days', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 15, 12)); // November 15, 2026
+    try {
+      const repository = createTestRepository();
+      const expense = {
+        kind: 'expense' as const,
+        currency: 'MXN' as const,
+        category: 'housing' as const,
+        month: '2026-08',
+        repeat: 'monthly' as const,
+      };
+      await repository.addBudgetItem({ ...expense, name: 'Renta', amount: 800_000, dueDay: 1 });
+      await repository.addBudgetItem({ ...expense, name: 'Internet', amount: 60_000, dueDay: 31 });
+      await repository.addBudgetItem({ ...expense, name: 'Gimnasio', amount: 50_000 });
+      await repository.addCredit(msi('2026-11-20'));
+      renderRoute('/budget?month=2026-11', repository);
+
+      const table = await screen.findByRole('table', { name: b.fixedDaysCaption });
+      const rows = within(table)
+        .getAllByRole('row')
+        .slice(1)
+        .map((row) => [...row.children].map((cell) => cell.textContent));
+      expect(rows).toEqual([
+        [`${b.noDueDay}Gimnasio`, '$500.00', '$500.00'],
+        [`${b.chargeDay('2026-11-01')} · ${b.chargeDayPassed}Renta`, '$8,000.00', '$8,500.00'],
+        [`${b.chargeDay('2026-11-20')}Televisión`, '$1,000.00', '$9,500.00'],
+        // Day 31 falls on November's last day.
+        [`${b.chargeDay('2026-11-30')}Internet`, '$600.00', '$10,100.00'],
+      ]);
+      // From today: the gym (no day, may still come), the credit and the internet.
+      expect(screen.getByText(b.pendingFromToday('$2,100.00'))).toBeVisible();
+      expect(screen.getByText(b.noDueDayNote)).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows what will be left when the year ends', async () => {

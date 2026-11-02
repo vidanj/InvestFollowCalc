@@ -294,6 +294,14 @@ Se reportaron al usuario al cerrar cada fase; cualquiera puede revertirse si no 
     semanales; guarda el mes en `skippedMonths`. Ese mes cuenta 0 (en semanales, todo el mes) y el
     siguiente vuelve solo. No aplica a anuales, únicos ni ingresos. Campo opcional y aditivo: no
     cambia índices de Dexie ni `SCHEMA_VERSION` (v3 aún no se publica).
+  - **Día del cargo** (pedido después, decidido con el usuario el 2026-11-02): los gastos mensuales
+    y anuales pueden llevar `dueDay` (1–31, opcional; en meses más cortos cae en el último día). Los
+    cargos fijos se muestran por día con el **acumulado desde el día 1** (lo que hay que tener antes
+    de ese día, sin restar ingresos); los que no tienen día van primero y cuentan desde el día 1;
+    los semanales y los pagos de créditos usan sus fechas. Tabla debajo del recordatorio de cargos
+    fijos (sin gráfica nueva); en el mes actual se atenúan los días que ya pasaron ("ya pasó") y se
+    muestra lo que falta por cobrarse (los sin día cuentan como pendientes). Campo opcional y
+    aditivo: no cambia índices de Dexie ni `SCHEMA_VERSION`.
   - **Retiros mayores al saldo** (decidido por el usuario el 2026-10-25: rechazarlos): un retiro sin
     saldo después no puede exceder el saldo conocido. Se valida al escribir (registrar, editar,
     borrar) y sólo bloquea violaciones nuevas; los datos y respaldos anteriores se siguen leyendo. El

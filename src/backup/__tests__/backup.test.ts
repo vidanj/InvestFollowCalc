@@ -79,6 +79,7 @@ const budgetItems: BudgetItemRecord[] = [
     month: '2026-10',
     repeat: 'monthly',
     endMonth: '2027-03',
+    dueDay: 5,
     skippedMonths: ['2026-12'],
     ...stamp,
   },
@@ -216,10 +217,11 @@ describe('createBackup / readBackup', () => {
   });
 
   it('imports backups from version 2, whose budget items were only monthly or one-off', async () => {
-    // Version 2 had neither `repeat` nor skipped months.
+    // Version 2 had neither `repeat`, skipped months nor charge days.
     const toV2 = ({ repeat, ...item }: (typeof budgetItems)[number]) => {
       const v2Item = { ...item, recurring: repeat === 'monthly' };
       delete v2Item.skippedMonths;
+      delete v2Item.dueDay;
       return v2Item;
     };
     const v2 = {
@@ -266,6 +268,9 @@ describe('createBackup / readBackup', () => {
       { ...validPayload(), budgetItems: [{ ...budgetItems[0], skippedMonths: ['2026-11'] }] }, // income
       { ...validPayload(), budgetItems: [{ ...budgetItems[1], skippedMonths: ['2026-1'] }] },
       { ...validPayload(), budgetItems: [{ ...budgetItems[1], repeat: 'weekly' }] }, // no first date
+      { ...validPayload(), budgetItems: [{ ...budgetItems[1], dueDay: 32 }] },
+      { ...validPayload(), budgetItems: [{ ...budgetItems[1], dueDay: '5' }] },
+      { ...validPayload(), budgetItems: [{ ...budgetItems[0], dueDay: 15 }] }, // income
       { ...validPayload(), settings: { investPlan: { percent: 120, sources: {} } } },
       {
         ...validPayload(),

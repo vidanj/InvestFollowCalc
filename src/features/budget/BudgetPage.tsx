@@ -12,12 +12,16 @@ import type { AccountWithEvents } from '../../db/repository';
 import { useRepository } from '../../db/repositoryContext';
 import type { CreditRecord } from '../../db/schema';
 import {
+  chargeDayPassed,
   firstBudgetMonth,
+  fixedChargeDays,
   monthlyTotals,
+  pendingCharges,
   summarizeMonth,
   summarizeYear,
   canSkip,
   type BudgetData,
+  type ChargeDay,
   type ExpenseItem,
   type MonthEntry,
   type MonthSummary,
@@ -32,6 +36,7 @@ import {
   toYearMonth,
   type YearMonth,
 } from '../../domain/months';
+import type { IsoDate } from '../../domain/types';
 import { formatMonth, formatWholePercent, MONTH_NAMES, strings } from '../../i18n/es-MX';
 import { BackupReminder } from '../backup/BackupReminder';
 import { CreditCard } from '../credits/CreditCard';
@@ -84,11 +89,13 @@ function MonthNavigator({ month, currentMonth }: { month: YearMonth; currentMont
 }
 
 function entryDetail({ item, times }: MonthEntry): string {
+  const monthName = MONTH_NAMES[Number(item.month.slice(5)) - 1] ?? '';
+  const { dueDay } = item;
   const repeats = {
     none: t.oneOff,
     weekly: t.everyWeek(times, formatMoney(item.amount, item.currency)),
-    monthly: t.everyMonth,
-    yearly: t.everyYear(MONTH_NAMES[Number(item.month.slice(5)) - 1] ?? ''),
+    monthly: dueDay === undefined ? t.everyMonth : t.everyMonthOn(dueDay),
+    yearly: dueDay === undefined ? t.everyYear(monthName) : t.everyYearOn(dueDay, monthName),
   }[item.repeat];
   const when = item.endMonth ? `${repeats}, ${t.until(formatMonth(item.endMonth))}` : repeats;
   return item.kind === 'expense' ? `${t.categories[item.category]} · ${when}` : when;
@@ -199,19 +206,91 @@ function MonthStats({ summary }: { summary: MonthSummary }) {
   );
 }
 
-/** Reminder of the money the account needs for the month's automatic charges. */
-function FixedChargesReminder({ summary }: { summary: MonthSummary }) {
+interface ChargeDaysTableProps {
+  days: ChargeDay[];
+  money: (cents: number) => string;
+  /** Only in the current month: days before it are marked as passed. */
+  today: IsoDate | null;
+}
+
+/** Each charge day with what is charged and what the account needs before it. */
+function ChargeDaysTable({ days, money, today }: ChargeDaysTableProps) {
+  const cell = 'px-3 py-2 text-right align-top whitespace-nowrap';
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      <table className="w-full text-sm tabular-nums">
+        <caption className="px-3 pt-3 pb-1 text-left text-sm font-semibold">
+          {t.fixedDaysCaption}
+        </caption>
+        <thead className="text-xs text-slate-600 dark:text-slate-400">
+          <tr>
+            <th scope="col" className="px-3 py-1.5 text-left font-medium">
+              {t.fixedDayColumn}
+            </th>
+            <th scope="col" className={`${cell} py-1.5 font-medium`}>
+              {t.fixedAmountColumn}
+            </th>
+            <th scope="col" className={`${cell} py-1.5 font-medium`}>
+              {t.fixedBeforeColumn}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {days.map((day) => {
+            const passed = today !== null && chargeDayPassed(day, today);
+            return (
+              <tr
+                key={day.date ?? 'undated'}
+                className={`border-t border-slate-100 dark:border-slate-800 ${passed ? 'text-slate-500 dark:text-slate-400' : ''}`}
+              >
+                <th scope="row" className="px-3 py-2 text-left align-top font-normal">
+                  <span className="block font-medium">
+                    {day.date === null ? t.noDueDay : t.chargeDay(day.date)}
+                    {passed && <span className="text-xs font-normal"> · {t.chargeDayPassed}</span>}
+                  </span>
+                  <span
+                    className={`block text-xs ${passed ? '' : 'text-slate-600 dark:text-slate-400'}`}
+                  >
+                    {day.charges.map((c) => c.name).join(', ')}
+                  </span>
+                </th>
+                <td className={cell}>{money(day.amount)}</td>
+                <td className={`${cell} font-medium`}>{money(day.cumulative)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Reminder of the money the account needs for the month's automatic charges, day by day. */
+function FixedChargesReminder({ summary, today }: { summary: MonthSummary; today: IsoDate }) {
+  const days = useMemo(() => fixedChargeDays(summary), [summary]);
   if (summary.fixedCharges === 0) return null;
   const money = (cents: number) => formatMoney(cents, summary.currency);
+  const isCurrentMonth = toYearMonth(today) === summary.month;
   return (
-    <Notice>
-      <p className="font-medium">{t.fixedTitle(formatMonth(summary.month))}</p>
-      <p className="text-2xl font-semibold">{money(summary.fixedCharges)}</p>
-      <p className="mt-1 text-xs">
-        {t.fixedDetail(money(summary.repeatingExpenses), money(summary.creditPayments))}{' '}
-        {t.fixedNote}
-      </p>
-    </Notice>
+    <section className="flex flex-col gap-2" aria-label={t.fixedTitle(formatMonth(summary.month))}>
+      <Notice>
+        <p className="font-medium">{t.fixedTitle(formatMonth(summary.month))}</p>
+        <p className="text-2xl font-semibold">{money(summary.fixedCharges)}</p>
+        <p className="mt-1 text-xs">
+          {t.fixedDetail(money(summary.repeatingExpenses), money(summary.creditPayments))}{' '}
+          {t.fixedNote}
+        </p>
+        {isCurrentMonth && (
+          <p className="mt-2 font-medium">
+            {t.pendingFromToday(money(pendingCharges(days, today)))}
+          </p>
+        )}
+      </Notice>
+      <ChargeDaysTable days={days} money={money} today={isCurrentMonth ? today : null} />
+      {days[0]?.date === null && (
+        <p className="text-xs text-slate-600 dark:text-slate-400">{t.noDueDayNote}</p>
+      )}
+    </section>
   );
 }
 
@@ -219,6 +298,7 @@ interface CurrencyBudgetProps {
   summary: MonthSummary;
   data: BudgetData;
   month: YearMonth;
+  today: IsoDate;
   currentMonth: YearMonth;
   accounts: AccountWithEvents[];
   plan: InvestPlan;
@@ -228,6 +308,7 @@ function CurrencyBudget({
   summary,
   data,
   month,
+  today,
   currentMonth,
   accounts,
   plan,
@@ -268,7 +349,7 @@ function CurrencyBudget({
         {strings.currencyNames[currency]}
       </h3>
       <MonthStats summary={summary} />
-      <FixedChargesReminder summary={summary} />
+      <FixedChargesReminder summary={summary} today={today} />
       <InvestCard summary={summary} returns={returns} plan={plan} month={month} />
       <YearSummaryCard summary={year} currentMonth={currentMonth} />
       <CategoryChart categories={summary.byCategory} total={summary.expenses} currency={currency} />
@@ -365,7 +446,8 @@ export function BudgetPage() {
   const accounts = useAccountsWithEvents();
   const plan = useInvestPlan();
   const [params] = useSearchParams();
-  const currentMonth = toYearMonth(toIsoDate());
+  const today = toIsoDate();
+  const currentMonth = toYearMonth(today);
   const month = monthParam(params.get('month'), currentMonth);
   const data = useMemo(
     () => (items && credits ? budgetDataSafely(items, credits) : undefined),
@@ -410,6 +492,7 @@ export function BudgetPage() {
                 summary={summary}
                 data={data}
                 month={month}
+                today={today}
                 currentMonth={currentMonth}
                 accounts={accounts}
                 plan={plan}

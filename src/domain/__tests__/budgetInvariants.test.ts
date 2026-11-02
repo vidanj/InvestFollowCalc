@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   creditMonthPayments,
   EXPENSE_CATEGORIES,
+  fixedChargeDays,
   occurrencesIn,
+  pendingCharges,
   REPEATS,
   scheduledIn,
   summarizeMonth,
@@ -18,8 +20,8 @@ import {
   PAYMENT_FREQUENCIES,
   type Credit,
 } from '../credit';
-import { addDays } from '../dates';
-import { addMonthsToYearMonth } from '../months';
+import { addDays, compareIsoDates } from '../dates';
+import { addMonthsToYearMonth, toYearMonth } from '../months';
 import { CURRENCIES } from '../types';
 
 const MAX_AMOUNT = 100_000_000; // 1 million in cents
@@ -144,8 +146,9 @@ const itemArb: fc.Arbitrary<BudgetItem> = fc
     repeat: fc.constantFrom(...REPEATS),
     length: fc.option(fc.integer({ min: 0, max: 24 }), { nil: null }),
     skips: fc.uniqueArray(fc.integer({ min: 0, max: 30 }), { maxLength: 4 }),
+    dueDay: fc.option(fc.integer({ min: 1, max: 31 }), { nil: null }),
   })
-  .map(({ id, kind, amount, currency, category, start, day, repeat, length, skips }) => {
+  .map(({ id, kind, amount, currency, category, start, day, repeat, length, skips, dueDay }) => {
     const month = addMonthsToYearMonth('2026-01', start);
     const base = {
       id,
@@ -160,6 +163,9 @@ const itemArb: fc.Arbitrary<BudgetItem> = fc
         : {}),
     };
     if (kind === 'income') return { ...base, kind };
+    // Monthly and yearly expenses may have a charge day.
+    const withDay =
+      (repeat === 'monthly' || repeat === 'yearly') && dueDay !== null ? { dueDay } : {};
     // Monthly and weekly expenses may skip some months.
     const skippedMonths = [...skips]
       .sort((a, b) => a - b)
@@ -167,11 +173,12 @@ const itemArb: fc.Arbitrary<BudgetItem> = fc
     return repeat === 'monthly' || repeat === 'weekly'
       ? {
           ...base,
+          ...withDay,
           kind,
           category,
           ...(skippedMonths.length > 0 ? { skippedMonths } : {}),
         }
-      : { ...base, kind, category };
+      : { ...base, ...withDay, kind, category };
   });
 
 describe('budget invariants', () => {
@@ -209,6 +216,40 @@ describe('budget invariants', () => {
               expect(occurrencesIn(item, month)).toBe(0);
               expect(summary.expenseItems.some((e) => e.item.id === item.id)).toBe(false);
             }
+          }
+        },
+      ),
+      { numRuns: 200 },
+    );
+  });
+
+  it('fixed charges by day add up to the fixed charges, in date order', () => {
+    fc.assert(
+      fc.property(
+        fc.array(itemArb, { maxLength: 20 }),
+        fc.array(creditArb, { maxLength: 2 }),
+        fc.integer({ min: 0, max: 30 }),
+        (items, credits, offset) => {
+          const valid = credits.filter((c) => scheduleOf(c) !== null);
+          const data = { items, creditPayments: creditMonthPayments(valid) };
+          const month = addMonthsToYearMonth('2026-01', offset);
+
+          for (const summary of summarizeMonth(data, month)) {
+            const days = fixedChargeDays(summary);
+            expect(days.at(-1)?.cumulative ?? 0).toBe(summary.fixedCharges);
+            expect(pendingCharges(days, `${month}-01`)).toBe(summary.fixedCharges);
+            let previous = 0;
+            days.forEach((day, i) => {
+              expect(day.amount).toBe(day.charges.reduce((s, c) => s + c.amount, 0));
+              expect(day.cumulative).toBe(previous + day.amount);
+              previous = day.cumulative;
+              // Undated charges first, then each date of the month once, in order.
+              if (day.date !== null) expect(toYearMonth(day.date)).toBe(month);
+              const before = days[i - 1]?.date;
+              if (before === undefined) return;
+              expect(day.date).not.toBeNull();
+              if (before !== null) expect(compareIsoDates(before, day.date!)).toBe(-1);
+            });
           }
         },
       ),
@@ -261,6 +302,15 @@ describe('budget invariants', () => {
         expect(total).toBe(schedule.payments.reduce((s, p) => s + p.total, 0));
         expect(byMonth.flatMap((m) => m.numbers)).toEqual(schedule.payments.map((p) => p.number));
         expect(new Set(byMonth.map((m) => m.month)).size).toBe(byMonth.length);
+        // Each payment keeps its own date and amount, inside its month.
+        for (const m of byMonth) {
+          expect(m.charges.reduce((s, c) => s + c.amount, 0)).toBe(m.amount);
+          expect(m.charges).toHaveLength(m.numbers.length);
+          for (const c of m.charges) expect(toYearMonth(c.date)).toBe(m.month);
+        }
+        expect(byMonth.flatMap((m) => m.charges.map((c) => c.date))).toEqual(
+          schedule.payments.map((p) => p.date),
+        );
       }),
       { numRuns: 200 },
     );

@@ -1,4 +1,4 @@
-import { addDays, addMonths, compareIsoDates, isIsoDate } from './dates';
+import { addDays, addMonths, compareIsoDates, isIsoDate, withDay } from './dates';
 import { isValidCents } from './money';
 import { CURRENCIES, type Cents, type Currency, type IsoDate } from './types';
 
@@ -156,13 +156,6 @@ export function minimumPayment(
 }
 
 // --- Dates ---
-
-/** `date`'s month with `day`, clamped to the month's length. */
-function withDay(date: IsoDate, day: number): IsoDate {
-  const monthStart = `${date.slice(0, 8)}01`;
-  const lastDay = Number(addDays(addMonths(monthStart, 1), -1).slice(8));
-  return `${date.slice(0, 8)}${String(Math.min(day, lastDay)).padStart(2, '0')}`;
-}
 
 /** Date of payment `index` (0 = the first) of a plan starting on `first`. */
 export function paymentDate(first: IsoDate, frequency: PaymentFrequency, index: number): IsoDate {

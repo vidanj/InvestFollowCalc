@@ -79,6 +79,21 @@ describe('budget items', () => {
     });
   });
 
+  it('stores the charge day, and changes it from a month on keeping the past', async () => {
+    const item = await repo.addBudgetItem({ ...rent, dueDay: 5 });
+    expect(await repo.getBudgetItem(item.id)).toMatchObject({ dueDay: 5 });
+
+    const next = await repo.updateBudgetItem(item.id, { ...rent, dueDay: 10 }, '2026-10');
+    expect(next).toMatchObject({ month: '2026-10', dueDay: 10 });
+    expect(await repo.getBudgetItem(item.id)).toMatchObject({ endMonth: '2026-09', dueDay: 5 });
+    // Skipping a month keeps it.
+    expect(await repo.setSkipped(next.id, '2026-11', true)).toMatchObject({ dueDay: 10 });
+    await expectRepositoryError(
+      repo.addBudgetItem({ ...rent, repeat: 'none', dueDay: 5 }),
+      'INVALID_BUDGET_ITEM',
+    );
+  });
+
   it('edits in place when the item starts in that month', async () => {
     const item = await repo.addBudgetItem({ ...rent, month: '2026-10' });
     const updated = await repo.updateBudgetItem(item.id, { ...rent, amount: 1 }, '2026-10');

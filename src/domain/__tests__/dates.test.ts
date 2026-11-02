@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareIsoDates, daysBetween, isIsoDate } from '../dates';
+import { compareIsoDates, daysBetween, isIsoDate, withDay } from '../dates';
 
 describe('isIsoDate', () => {
   it('accepts real calendar dates', () => {
@@ -37,5 +37,19 @@ describe('compareIsoDates', () => {
     expect(compareIsoDates('2026-01-01', '2026-01-02')).toBe(-1);
     expect(compareIsoDates('2026-01-02', '2026-01-01')).toBe(1);
     expect(compareIsoDates('2026-01-01', '2026-01-01')).toBe(0);
+  });
+});
+
+describe('withDay', () => {
+  it('moves a date to another day of its month', () => {
+    expect(withDay('2026-11-01', 5)).toBe('2026-11-05');
+    expect(withDay('2026-11-20', 1)).toBe('2026-11-01');
+  });
+
+  it('clamps the day to the last day of the month', () => {
+    expect(withDay('2026-11-01', 31)).toBe('2026-11-30');
+    expect(withDay('2027-02-01', 30)).toBe('2027-02-28');
+    expect(withDay('2028-02-01', 31)).toBe('2028-02-29');
+    expect(withDay('2026-12-01', 31)).toBe('2026-12-31');
   });
 });

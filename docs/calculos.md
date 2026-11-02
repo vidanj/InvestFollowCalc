@@ -141,6 +141,9 @@ El código está en [src/domain/budget.ts](../src/domain/budget.ts).
   Ejemplo semanal: gasolina de 500 cada viernes desde el 2 de octubre de 2026 → octubre cuenta 5
   cargos (2, 9, 16, 23 y 30): 2,500; noviembre 4 cargos: 2,000.
 
+- Un gasto **mensual o anual** puede llevar el **día del cargo** (1 a 31, opcional). Si el mes
+  tiene menos días, el cargo cae en su último día (el 31 en noviembre cae el 30; en febrero, el 28
+  o 29). Los semanales ya tienen sus fechas y los pagos de créditos las de su tabla de pagos.
 - Un gasto **mensual o semanal** se puede marcar como **"No lo pago este mes"** (por ejemplo, una
   suscripción que pausas un mes): ese mes cuenta 0 (en los semanales, ninguno de sus cargos del mes)
   y al mes siguiente vuelve a contar solo. Sigue apareciendo en la lista para poder desmarcarlo. No
@@ -169,9 +172,33 @@ Por cada moneda (USD y MXN nunca se suman entre sí):
 automáticos del mes; no incluye los gastos de una sola vez ni los que marcaste como no pagados ese
 mes. Un gasto omitido tampoco cuenta en los gastos, en lo que te queda ni en "Tu año".
 
+### Cargos fijos por día
+
+Los mismos cargos fijos, ordenados por el día en que se cobran, con lo que hay que tener en la
+cuenta **antes** de cada día:
+
+```
+ten antes del día D = suma de los cargos fijos del día 1 al día D (incluido)
+```
+
+- Cada gasto que se repite cuenta en su día: los semanales en cada una de sus fechas del mes, los
+  mensuales y anuales en su día del cargo, y cada pago de crédito en su fecha (uno quincenal, en
+  sus dos días).
+- Los gastos **sin día fijo** van primero y se cuentan desde el día 1, para no quedarse cortos.
+- No se restan los ingresos que lleguen durante el mes: es lo que necesitas tener ya en la cuenta.
+- El último acumulado es igual a los **cargos fijos** del mes.
+- En el mes actual, los días anteriores a hoy se marcan como "ya pasó" y se muestra lo que **falta
+  por cobrarse** de hoy a fin de mes: los cargos de hoy en adelante más los que no tienen día (no se
+  sabe si ya se cobraron).
+
+Ejemplo (noviembre de 2026): gimnasio 500 sin día, renta 8,000 el día 1, crédito 1,000 el día 20 e
+internet 600 el día 31 → sin día: 500; día 1: 8,500; día 20: 9,500; día 30: 10,100. El 15 de
+noviembre falta por cobrarse 500 + 1,000 + 600 = 2,100.
+
 Las pruebas verifican con cientos de presupuestos aleatorios que **te queda = ingresos − gastos**,
-que **la suma de las categorías = gastos**, que **cargos fijos = gastos − gastos de una sola vez** y
-que un concepto semanal cae **52 o 53 veces** en cualquier periodo de 12 meses.
+que **la suma de las categorías = gastos**, que **cargos fijos = gastos − gastos de una sola vez**,
+que **el último acumulado por día = cargos fijos** (y nunca baja de un día al siguiente) y que un
+concepto semanal cae **52 o 53 veces** en cualquier periodo de 12 meses.
 
 ## Tu año
 
@@ -307,3 +334,4 @@ Las pruebas verifican con cientos de créditos aleatorios que:
 
 Cada pago de un crédito cuenta como gasto (pago total, con IVA) del mes de su fecha, en la
 categoría "créditos y deudas". Un crédito quincenal normalmente aparece con dos pagos en el mes.
+En los cargos fijos por día, cada pago cuenta en su propia fecha.

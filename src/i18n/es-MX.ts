@@ -142,6 +142,8 @@ const budgetIssueMessages: Record<BudgetIssueCode, string> = {
   INVALID_REPEAT: 'Elige cada cuándo se repite.',
   INVALID_FIRST_DATE: 'Escribe la fecha del primer cargo; debe caer en el mes inicial.',
   INVALID_SKIP: 'Solo los gastos que se repiten cada mes o cada semana se pueden omitir en un mes.',
+  INVALID_DUE_DAY:
+    'El día del cargo va del 1 al 31 y solo aplica a gastos que se repiten cada mes o cada año.',
   END_WITHOUT_RECURRING: 'Solo un concepto que se repite puede tener mes final.',
 };
 
@@ -326,6 +328,16 @@ export const strings = {
     fixedDetail: (repeating: string, credits: string) =>
       `${repeating} de gastos que se repiten (suscripciones, servicios, renta…) y ${credits} de pagos de créditos.`,
     fixedNote: 'No incluye los gastos de una sola vez.',
+    fixedDaysCaption: 'Cuánto tener en tu cuenta antes de cada día de cargo',
+    fixedDayColumn: 'Día',
+    fixedAmountColumn: 'Se cobra',
+    fixedBeforeColumn: 'Ten antes',
+    noDueDay: 'Sin día fijo',
+    chargeDay: (date: IsoDate) => `Día ${Number(date.slice(8))}`,
+    chargeDayPassed: 'ya pasó',
+    pendingFromToday: (amount: string) => `Falta por cobrarse de hoy a fin de mes: ${amount}.`,
+    noDueDayNote:
+      'Los gastos sin día fijo se cuentan desde el día 1. Edítalos para ponerles el día del cargo.',
     meterLabel: 'Parte de tus ingresos que ya se va en gastos',
     meterValue: (percent: string) => `Gastas el ${percent} de lo que ganas`,
     meterOver: (percent: string) => `Gastas el ${percent} de lo que ganas: más de lo que entra`,
@@ -334,7 +346,9 @@ export const strings = {
     creditsTitle: 'Pagos de créditos',
     nothingYet: 'Nada todavía.',
     everyMonth: 'Cada mes',
+    everyMonthOn: (day: number) => `Cada mes, día ${day}`,
     everyYear: (month: string) => `Cada año en ${month}`,
+    everyYearOn: (day: number, month: string) => `Cada año el ${day} de ${month}`,
     everyWeek: (times: number, amount: string) => `Cada semana · ${times} × ${amount} este mes`,
     until: (month: string) => `hasta ${month}`,
     oneOff: 'Solo este mes',
@@ -383,6 +397,9 @@ export const strings = {
     firstDate: 'Fecha del primer cargo',
     firstDateHelp:
       'Se repite cada 7 días desde esta fecha: según el mes caen 4 o 5 cargos y se cuentan todos.',
+    dueDay: 'Día del cargo',
+    dueDayHelp:
+      'Para saber cuánto tener en tu cuenta antes de ese día. Si el mes tiene menos días, se cuenta el último.',
     hasEnd: 'Termina en un mes',
     endMonth: 'Hasta',
     year: 'Año',
@@ -756,6 +773,7 @@ export const strings = {
     required: 'Este dato es obligatorio.',
     invalidAmount: 'Escribe un monto válido, por ejemplo 10,000.50.',
     invalidDate: 'Escribe una fecha válida.',
+    invalidDueDay: 'Escribe un día del 1 al 31.',
     futureDate: 'La fecha no puede ser futura.',
     nameLength: (max: number) => `Escribe un nombre de 1 a ${max} caracteres.`,
     issue: (code: ValidationIssueCode) => issueMessages[code],

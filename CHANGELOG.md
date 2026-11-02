@@ -28,6 +28,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); v
   mes), además de los de una sola vez.
 - Recordatorio de **cargos fijos**: cuánto tener disponible en la cuenta para los cargos automáticos
   del mes.
+- **Día del cargo** (opcional) en gastos mensuales y anuales: los cargos fijos se listan día por
+  día con cuánto tener en la cuenta antes de cada uno (los semanales y los pagos de créditos usan
+  sus fechas). En el mes actual se marcan los días que ya pasaron y lo que falta por cobrarse.
 - **"No lo pago este mes"**: un gasto mensual o semanal (por ejemplo, una suscripción) se puede
   omitir un mes; ese mes no cuenta y al siguiente vuelve solo.
 - **Tu año**: ingresos, gastos y lo que quedará al cierre, registrado y proyectado.

@@ -1,6 +1,8 @@
 import {
   BUDGET_NAME_MAX_LENGTH,
+  canHaveDueDay,
   canSkip,
+  MAX_DUE_DAY,
   startingIn,
   validateBudgetItem,
   type BudgetItem,
@@ -29,6 +31,8 @@ export interface BudgetItemFormValues {
   firstDate: string;
   hasEnd: boolean;
   endMonth: YearMonth;
+  /** Day of the month the charge comes (monthly and yearly expenses); empty when not given. */
+  dueDay: string;
   /** Months marked as skipped from the month list; not edited here, only carried along. */
   skippedMonths: YearMonth[];
 }
@@ -38,6 +42,7 @@ export interface BudgetItemFormErrors {
   amount?: string;
   firstDate?: string;
   endMonth?: string;
+  dueDay?: string;
   /** Anything the domain still rejects. */
   other?: string[];
 }
@@ -63,8 +68,17 @@ export function emptyBudgetItemValues(
     firstDate: toYearMonth(today) === month ? today : `${month}-01`,
     hasEnd: false,
     endMonth: month,
+    dueDay: '',
     skippedMonths: [],
   };
+}
+
+/** The charge day typed in the form: `undefined` when empty, `null` when not a day 1–31. */
+function parseDueDay(text: string): number | undefined | null {
+  const trimmed = text.trim();
+  if (trimmed === '') return undefined;
+  const day = /^\d{1,2}$/.test(trimmed) ? Number(trimmed) : 0;
+  return day >= 1 && day <= MAX_DUE_DAY ? day : null;
 }
 
 export function valuesFromItem(item: BudgetItem): BudgetItemFormValues {
@@ -79,6 +93,7 @@ export function valuesFromItem(item: BudgetItem): BudgetItemFormValues {
     firstDate: item.firstDate ?? `${item.month}-01`,
     hasEnd: item.endMonth !== undefined,
     endMonth: item.endMonth ?? item.month,
+    dueDay: item.dueDay === undefined ? '' : String(item.dueDay),
     skippedMonths: item.skippedMonths ?? [],
   };
 }
@@ -116,6 +131,9 @@ export function parseBudgetItemForm(
   ) {
     errors.endMonth = strings.errors.budgetIssue('END_BEFORE_START');
   }
+  // Only monthly and yearly expenses keep a charge day; anything left in the field is ignored.
+  const dueDay = canHaveDueDay(values) ? parseDueDay(values.dueDay) : undefined;
+  if (dueDay === null) errors.dueDay = strings.errors.invalidDueDay;
   if (Object.keys(errors).length > 0 || amount === null) return { ok: false, errors };
 
   const base = {
@@ -126,6 +144,7 @@ export function parseBudgetItemForm(
     repeat: values.repeat,
     ...(weekly ? { firstDate: values.firstDate } : {}),
     ...(withEnd ? { endMonth: values.endMonth } : {}),
+    ...(typeof dueDay === 'number' ? { dueDay } : {}),
     // Kept only while the item can still skip months (monthly or weekly expenses).
     ...(canSkip(values) && values.skippedMonths.length > 0
       ? { skippedMonths: values.skippedMonths }

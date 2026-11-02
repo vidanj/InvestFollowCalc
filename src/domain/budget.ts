@@ -1,5 +1,5 @@
 import { buildSchedule, type Credit } from './credit';
-import { addDays, addMonths, compareIsoDates, daysBetween, isIsoDate } from './dates';
+import { addDays, addMonths, compareIsoDates, daysBetween, isIsoDate, withDay } from './dates';
 import { isValidCents } from './money';
 import {
   addMonthsToYearMonth,
@@ -34,6 +34,8 @@ export const EXPENSE_CATEGORIES = [
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 
 export const BUDGET_NAME_MAX_LENGTH = 60;
+/** Highest charge day; shorter months move it to their last day. */
+export const MAX_DUE_DAY = 31;
 
 /** How often an item comes back: never, every 7 days, every month or every year. */
 export const REPEATS = ['none', 'weekly', 'monthly', 'yearly'] as const;
@@ -52,6 +54,11 @@ interface BudgetItemBase {
   firstDate?: IsoDate;
   /** Last month (included) of a repeating item; absent while it keeps repeating. */
   endMonth?: YearMonth;
+  /**
+   * Monthly or yearly expenses only: day of the month the charge comes (1–31; past the month's
+   * end it falls on its last day). Optional: without it the charge counts from the 1st.
+   */
+  dueDay?: number;
   /**
    * Monthly or weekly expenses only: months the user decided not to pay (e.g. a subscription
    * paused for a month). They count 0 that month and come back the next.
@@ -84,6 +91,18 @@ function nextWeekly(first: IsoDate, from: IsoDate): IsoDate {
   return gap <= 0 ? first : addDays(first, Math.ceil(gap / 7) * 7);
 }
 
+/** Dates of `month` on the 7-day cadence started at `first` (none without a first date). */
+function weeklyDatesIn(first: IsoDate | undefined, month: YearMonth): IsoDate[] {
+  if (first === undefined) return [];
+  const last = lastDayOf(month);
+  const dates: IsoDate[] = [];
+  for (let date = nextWeekly(first, `${month}-01`); compareIsoDates(date, last) <= 0;) {
+    dates.push(date);
+    date = addDays(date, 7);
+  }
+  return dates;
+}
+
 /**
  * How many times the item is due in `month` by its schedule: once for one-offs in their month,
  * monthly items every month, yearly items in their month every 12 months, and weekly items the
@@ -98,13 +117,14 @@ export function scheduledIn(item: Schedule, month: YearMonth): number {
       return 1;
     case 'yearly':
       return monthsBetween(item.month, month) % 12 === 0 ? 1 : 0;
-    case 'weekly': {
-      if (item.firstDate === undefined) return 0;
-      const first = nextWeekly(item.firstDate, `${month}-01`);
-      const last = lastDayOf(month);
-      return compareIsoDates(first, last) > 0 ? 0 : 1 + Math.floor(daysBetween(first, last) / 7);
-    }
+    case 'weekly':
+      return weeklyDatesIn(item.firstDate, month).length;
   }
+}
+
+/** Only monthly and yearly expenses have a charge day (weekly ones have their dates). */
+export function canHaveDueDay(item: Pick<BudgetItem, 'kind' | 'repeat'>): boolean {
+  return item.kind === 'expense' && (item.repeat === 'monthly' || item.repeat === 'yearly');
 }
 
 /** Only monthly and weekly expenses can skip a month. */
@@ -187,6 +207,8 @@ export interface CreditMonthPayment {
   amount: Cents;
   /** Payment numbers, e.g. [5, 6] = payments 5 and 6. */
   numbers: number[];
+  /** Date and amount (IVA included) of each of those payments, in the same order. */
+  charges: { date: IsoDate; amount: Cents }[];
   totalPayments: number;
 }
 
@@ -212,6 +234,7 @@ export function creditMonthPayments(
           month,
           amount: 0,
           numbers: [],
+          charges: [],
           totalPayments: payments.length,
         };
         byMonth.set(month, entry);
@@ -219,6 +242,7 @@ export function creditMonthPayments(
       }
       entry.amount += payment.total;
       entry.numbers.push(payment.number);
+      entry.charges.push({ date: payment.date, amount: payment.total });
     }
   }
   return result;
@@ -336,6 +360,82 @@ export function summarizeMonth(data: BudgetData, month: YearMonth): MonthSummary
   );
 }
 
+// --- Fixed charges by day ---
+
+/** One automatic charge: a repeating expense or a credit payment. */
+export interface FixedCharge {
+  name: string;
+  amount: Cents;
+  /** What it comes from, to link to it. */
+  source: { kind: 'item' | 'credit'; id: string };
+}
+
+/** The fixed charges of one day of the month. */
+export interface ChargeDay {
+  /** `null`: repeating expenses without a charge day, counted from the 1st. */
+  date: IsoDate | null;
+  /** Largest first. */
+  charges: FixedCharge[];
+  /** What is charged that day. */
+  amount: Cents;
+  /** Everything charged from the 1st through this day: what the account needs before it. */
+  cumulative: Cents;
+}
+
+/** When `item` is charged in `month` (it counts there); `null` for a day not given. */
+function chargeDatesIn(item: BudgetItem, month: YearMonth): (IsoDate | null)[] {
+  if (item.repeat === 'weekly') return weeklyDatesIn(item.firstDate, month);
+  return [item.dueDay === undefined ? null : withDay(`${month}-01`, item.dueDay)];
+}
+
+/**
+ * The month's fixed charges day by day, with the running total the account needs before each
+ * day: charges without a day first (counted from the 1st), then by date. The last running total
+ * is the month's `fixedCharges`.
+ */
+export function fixedChargeDays(
+  summary: Pick<MonthSummary, 'month' | 'expenseItems' | 'credits'>,
+): ChargeDay[] {
+  const undated: FixedCharge[] = [];
+  const dated = new Map<IsoDate, FixedCharge[]>();
+  const add = (date: IsoDate | null, charge: FixedCharge) => {
+    if (date === null) undated.push(charge);
+    else dated.set(date, [...(dated.get(date) ?? []), charge]);
+  };
+  for (const { item } of summary.expenseItems) {
+    if (item.repeat === 'none') continue;
+    for (const date of chargeDatesIn(item, summary.month)) {
+      add(date, { name: item.name, amount: item.amount, source: { kind: 'item', id: item.id } });
+    }
+  }
+  for (const credit of summary.credits) {
+    for (const { date, amount } of credit.charges) {
+      add(date, { name: credit.name, amount, source: { kind: 'credit', id: credit.creditId } });
+    }
+  }
+
+  const groups: [IsoDate | null, FixedCharge[]][] = [
+    ...(undated.length > 0 ? [[null, undated] as [null, FixedCharge[]]] : []),
+    ...[...dated].sort(([a], [b]) => compareIsoDates(a, b)),
+  ];
+  let cumulative = 0;
+  return groups.map(([date, charges]) => {
+    const amount = sum(charges.map((c) => c.amount));
+    cumulative += amount;
+    return { date, charges: charges.sort(byAmountDesc), amount, cumulative };
+  });
+}
+
+/** A dated charge day before `today` already passed; charges without a day never count as passed. */
+export function chargeDayPassed(day: Pick<ChargeDay, 'date'>, today: IsoDate): boolean {
+  return day.date !== null && compareIsoDates(day.date, today) < 0;
+}
+
+/** What is still to be charged from `today` on (charges without a day included: they may come). */
+export function pendingCharges(days: readonly ChargeDay[], today: IsoDate): Cents {
+  return sum(days.filter((day) => !chargeDayPassed(day, today)).map((day) => day.amount));
+}
+
 export interface MonthTotals {
   month: YearMonth;
   income: Cents;
@@ -416,6 +516,7 @@ export type BudgetIssueCode =
   | 'INVALID_REPEAT'
   | 'INVALID_FIRST_DATE'
   | 'INVALID_SKIP'
+  | 'INVALID_DUE_DAY'
   | 'END_BEFORE_START'
   | 'END_WITHOUT_RECURRING';
 
@@ -449,6 +550,11 @@ export function validateBudgetItem(item: BudgetItemDraft): BudgetIssueCode[] {
       (m, i) => isYearMonth(m) && (i === 0 || compareYearMonths(skippedMonths[i - 1]!, m) < 0),
     );
     if (!canSkip(item) || skippedMonths.length === 0 || !sortedUnique) issues.push('INVALID_SKIP');
+  }
+  if (item.dueDay !== undefined) {
+    const { dueDay } = item;
+    const inRange = Number.isInteger(dueDay) && dueDay >= 1 && dueDay <= MAX_DUE_DAY;
+    if (!canHaveDueDay(item) || !inRange) issues.push('INVALID_DUE_DAY');
   }
   if (item.endMonth !== undefined) {
     if (item.repeat === 'none') issues.push('END_WITHOUT_RECURRING');
