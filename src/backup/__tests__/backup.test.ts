@@ -83,6 +83,30 @@ const budgetItems: BudgetItemRecord[] = [
     skippedMonths: ['2026-12'],
     ...stamp,
   },
+  // Mirrors of the contribution e3 and the withdrawal e4.
+  {
+    id: 'b3',
+    kind: 'expense',
+    name: 'Aportación · Ahorro',
+    amount: 50_000,
+    currency: 'MXN',
+    category: 'investment',
+    month: '2026-10',
+    repeat: 'none',
+    sourceEventId: 'e3',
+    ...stamp,
+  },
+  {
+    id: 'b4',
+    kind: 'income',
+    name: 'Retiro · Ahorro',
+    amount: 100,
+    currency: 'MXN',
+    month: '2026-10',
+    repeat: 'none',
+    sourceEventId: 'e4',
+    ...stamp,
+  },
 ];
 const credits: CreditRecord[] = [
   {
@@ -239,6 +263,24 @@ describe('createBackup / readBackup', () => {
     expect(contents.settings).toEqual({});
   });
 
+  it('imports backups from version 3, before budget items could mirror a movement', async () => {
+    const v3 = { ...validPayload(), schemaVersion: 3, budgetItems: budgetItems.slice(0, 2) };
+    const contents = await readBackup(await fileWithPayload(v3), PASSWORD);
+    expect(contents.budgetItems).toEqual(budgetItems.slice(0, 2));
+    expect(contents.events).toEqual(events);
+  });
+
+  it('keeps the link between a movement and its budget item', async () => {
+    const { text } = await createBackup(data, PASSWORD, FAST);
+    const contents = await readBackup(text, PASSWORD);
+    expect(contents.budgetItems.map((i) => i.sourceEventId)).toEqual([
+      undefined,
+      undefined,
+      'e3',
+      'e4',
+    ]);
+  });
+
   it('refuses backups from a newer app version', async () => {
     const { text } = await createBackup(data, PASSWORD, FAST);
     const newerFormat = JSON.stringify({ ...JSON.parse(text), formatVersion: 99 });
@@ -271,6 +313,16 @@ describe('createBackup / readBackup', () => {
       { ...validPayload(), budgetItems: [{ ...budgetItems[1], dueDay: 32 }] },
       { ...validPayload(), budgetItems: [{ ...budgetItems[1], dueDay: '5' }] },
       { ...validPayload(), budgetItems: [{ ...budgetItems[0], dueDay: 15 }] }, // income
+      // Budget items mirroring movements must match them exactly.
+      { ...validPayload(), budgetItems: [{ ...budgetItems[2], sourceEventId: 'ghost' }] },
+      { ...validPayload(), budgetItems: [{ ...budgetItems[2], sourceEventId: 'e1' }] }, // a balance
+      { ...validPayload(), budgetItems: [{ ...budgetItems[2], sourceEventId: 'e4' }] }, // withdrawal
+      { ...validPayload(), budgetItems: [{ ...budgetItems[2], amount: 49_999 }] },
+      { ...validPayload(), budgetItems: [{ ...budgetItems[2], month: '2026-11' }] },
+      { ...validPayload(), budgetItems: [{ ...budgetItems[2], currency: 'USD' }] },
+      { ...validPayload(), budgetItems: [budgetItems[2], { ...budgetItems[2], id: 'b5' }] },
+      { ...validPayload(), budgetItems: [{ ...budgetItems[2], category: 'other' }] },
+      { ...validPayload(), budgetItems: [{ ...budgetItems[3], repeat: 'monthly' }] },
       { ...validPayload(), settings: { investPlan: { percent: 120, sources: {} } } },
       {
         ...validPayload(),

@@ -1,9 +1,9 @@
 import { ButtonLink } from '../../components/Button';
 import type { MonthSummary } from '../../domain/budget';
 import {
+  investProgress,
   projectContributions,
   resolveRate,
-  suggestInvestment,
   type CurrencyReturns,
   type InvestPlan,
 } from '../../domain/investPlan';
@@ -26,7 +26,7 @@ interface InvestCardProps {
 export function InvestCard({ summary, returns, plan, month }: InvestCardProps) {
   const { currency } = summary;
   const money = (cents: number) => formatMoney(cents, currency);
-  const suggestion = suggestInvestment(summary.income, summary.left, plan.percent);
+  const suggestion = investProgress(summary, plan.percent);
   const resolved = resolveRate(returns, plan.sources[currency]);
   const projection =
     suggestion.amount > 0 && resolved.rate !== null && resolved.rate > -1
@@ -34,7 +34,7 @@ export function InvestCard({ summary, returns, plan, month }: InvestCardProps) {
       : undefined;
 
   let body;
-  if (summary.income === 0) body = <p className="text-sm">{t.noIncome}</p>;
+  if (suggestion.income <= 0) body = <p className="text-sm">{t.noIncome}</p>;
   else if (suggestion.amount === 0) body = <p className="text-sm">{t.nothingLeft}</p>;
   else {
     body = (
@@ -47,6 +47,7 @@ export function InvestCard({ summary, returns, plan, month }: InvestCardProps) {
               ? t.capped(plan.percent, money(suggestion.target))
               : t.share(plan.percent)}
           </p>
+          <InvestedLine invested={suggestion.invested} amount={suggestion.amount} money={money} />
         </div>
         {projection && resolved.rate !== null ? (
           <div className="text-sm">
@@ -84,5 +85,23 @@ export function InvestCard({ summary, returns, plan, month }: InvestCardProps) {
         {t.adjust}
       </ButtonLink>
     </section>
+  );
+}
+
+interface InvestedLineProps {
+  invested: number;
+  amount: number;
+  money: (cents: number) => string;
+}
+
+/** How much of the suggestion the user already moved from the budget to the accounts. */
+export function InvestedLine({ invested, amount, money }: InvestedLineProps) {
+  if (invested <= 0) return null;
+  const pending = Math.max(0, amount - invested);
+  return (
+    <p className="mt-1 text-sm">
+      {t.invested(money(invested), money(amount))}{' '}
+      {pending > 0 ? t.pending(money(pending)) : t.reached}
+    </p>
   );
 }

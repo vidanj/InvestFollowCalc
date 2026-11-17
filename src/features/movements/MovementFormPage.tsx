@@ -6,15 +6,18 @@ import { Notice } from '../../components/Notice';
 import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { TextField } from '../../components/TextField';
-import { useAccount, useAccountEvents } from '../../db/hooks';
+import { CheckboxField } from '../../components/CheckboxField';
+import { useAccount, useAccountEvents, useLinkedBudgetItem } from '../../db/hooks';
 import { useRepository } from '../../db/repositoryContext';
 import type { AccountRecord, EventRecord } from '../../db/schema';
 import { toIsoDate } from '../../domain/dates';
+import { toYearMonth } from '../../domain/months';
 import { previewEvent } from '../../domain/preview';
-import { strings } from '../../i18n/es-MX';
+import { formatMonth, strings } from '../../i18n/es-MX';
 import type { FlashState } from '../accounts/accountHelpers';
 import { errorMessages, issueMessages } from '../errors';
 import {
+  budgetNameFor,
   emptyMovementValues,
   parseMovementForm,
   toCandidate,
@@ -34,15 +37,17 @@ interface MovementFormProps {
   account: AccountRecord;
   events: EventRecord[];
   editing?: EventRecord;
+  /** The edited movement already goes into the budget. */
+  linked?: boolean;
 }
 
-function MovementForm({ account, events, editing }: MovementFormProps) {
+function MovementForm({ account, events, editing, linked = false }: MovementFormProps) {
   const repository = useRepository();
   const navigate = useNavigate();
   const today = toIsoDate();
   const isInitial = editing !== undefined && events[0]?.id === editing.id;
   const [values, setValues] = useState<MovementFormValues>(() =>
-    editing ? valuesFromEvent(editing) : emptyMovementValues(today),
+    editing ? valuesFromEvent(editing, linked) : emptyMovementValues(today),
   );
   const [showErrors, setShowErrors] = useState(false);
   const [saveErrors, setSaveErrors] = useState<string[]>([]);
@@ -63,10 +68,15 @@ function MovementForm({ account, events, editing }: MovementFormProps) {
     event.preventDefault();
     setShowErrors(true);
     if (!parsed.ok || !preview?.ok) return;
+    const budgetName = budgetNameFor(values, account.name);
     try {
-      if (editing) await repository.updateEvent(editing.id, parsed.draft);
-      else await repository.addEvent(account.id, parsed.draft);
-      const state: FlashState = { flash: previewLines };
+      if (editing) await repository.updateEvent(editing.id, parsed.draft, budgetName);
+      else await repository.addEvent(account.id, parsed.draft, budgetName ?? undefined);
+      const budgetLine =
+        budgetName === null
+          ? []
+          : [strings.movement.budgetFlash(formatMonth(toYearMonth(values.date)))];
+      const state: FlashState = { flash: [...previewLines, ...budgetLine] };
       void navigate(accountPath, { state });
     } catch (error) {
       setSaveErrors(errorMessages(error));
@@ -141,6 +151,16 @@ function MovementForm({ account, events, editing }: MovementFormProps) {
             error={fieldErrors.balanceAfter}
           />
         )}
+        {values.type !== 'balance' && (
+          <CheckboxField
+            label={strings.movement.fromBudget[values.type]}
+            help={strings.movement.fromBudgetHelp[values.type]}
+            checked={values.fromBudget}
+            onChange={(fromBudget) => {
+              set({ fromBudget });
+            }}
+          />
+        )}
 
         {preview && !preview.ok && (
           <Notice tone="error">
@@ -177,7 +197,7 @@ function MovementForm({ account, events, editing }: MovementFormProps) {
         <section className="border-t border-slate-200 pt-6 dark:border-slate-800">
           <ConfirmButton
             label={strings.movement.deleteMovement}
-            warning={strings.movement.deleteWarning}
+            warning={linked ? strings.movement.deleteLinkedWarning : strings.movement.deleteWarning}
             onConfirm={() => {
               void remove();
             }}
@@ -192,8 +212,11 @@ export function MovementFormPage() {
   const { accountId = '', eventId } = useParams();
   const account = useAccount(accountId);
   const events = useAccountEvents(accountId);
+  const linkedItem = useLinkedBudgetItem(eventId);
 
-  if (account === undefined || events === undefined) return <p>{strings.common.loading}</p>;
+  if (account === undefined || events === undefined || linkedItem === undefined) {
+    return <p>{strings.common.loading}</p>;
+  }
   if (account === null) return <Notice tone="error">{strings.account.notFound}</Notice>;
 
   const editing = eventId ? events.find((e) => e.id === eventId) : undefined;
@@ -215,6 +238,7 @@ export function MovementFormPage() {
         key={editing?.id ?? 'new'}
         account={account}
         events={events}
+        linked={linkedItem !== null}
         {...(editing ? { editing } : {})}
       />
     </>

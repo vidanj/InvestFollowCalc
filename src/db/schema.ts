@@ -10,7 +10,7 @@ export const DB_NAME = 'investfollowcalc';
  * Bump together with a new `db.version(...)` block and a migration test. Backups store it too,
  * so old backups can be migrated on import.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 interface Timestamps {
   /** ISO datetime. */
@@ -76,6 +76,8 @@ export function createDb(name: string = DB_NAME): InvestDb {
           delete item.recurring;
         });
     });
+  // v4: budget items can mirror a contribution or withdrawal (`sourceEventId`, optional).
+  db.version(4).stores({ budgetItems: 'id, sourceEventId' });
   return db;
 }
 

@@ -58,7 +58,7 @@ Al descifrar, `data` contiene:
 
 ```json
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "appVersion": "1.1.0",
   "exportedAt": "2026-10-16T12:00:00.000Z",
   "accounts": [
@@ -125,7 +125,10 @@ Los montos están en **centavos**; la tasa, en puntos base (27.5% = 2750). Los i
 `firstDate` (fecha del primer cargo); los gastos mensuales o semanales pueden llevar
 `skippedMonths` (meses que no se pagaron, ordenados); los gastos mensuales o anuales pueden llevar
 `dueDay` (día del cargo, 1 a 31; campo opcional que no cambia `schemaVersion`) y `endMonth` sólo
-aparece en conceptos que se repiten y tienen mes final. En `settings.investPlan`, `sources` dice por moneda qué rendimiento se usa:
+aparece en conceptos que se repiten y tienen mes final. `sourceEventId` (opcional) aparece en un
+concepto creado desde una aportación (gasto de categoría `investment`) o un retiro (ingreso) del
+portafolio: es el `id` de ese movimiento, y el concepto debe coincidir con él (monto, mes, moneda
+de la cuenta, de una sola vez). En `settings.investPlan`, `sources` dice por moneda qué rendimiento se usa:
 `portfolio`, `account` (con `accountId`) o `manual` (con `rateBps`); `settings` puede venir vacío. En `plans`, el
 primero es el crédito como se registró y los siguientes son las actualizaciones de saldo.
 
@@ -141,3 +144,4 @@ primero es el crédito como se registró y los siguientes son las actualizacione
 | 1               | Cuentas y movimientos (v1.0.0).                                                                     |
 | 2               | Agrega `budgetItems` y `credits`. Un respaldo v1 se importa con ambos vacíos.                       |
 | 3               | `recurring` (sí/no) pasa a `repeat` (`monthly`/`none`); agrega `firstDate` y `settings.investPlan`. |
+| 4               | Agrega `sourceEventId` y la categoría `investment`. Un respaldo v3 se importa sin cambios.          |

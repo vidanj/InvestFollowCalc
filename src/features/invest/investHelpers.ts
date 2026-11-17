@@ -1,6 +1,12 @@
 import type { BudgetData } from '../../domain/budget';
 import { summarizeMonth } from '../../domain/budget';
-import type { CurrencyReturns, RateSource, ResolvedRate } from '../../domain/investPlan';
+import {
+  investProgress,
+  type CurrencyReturns,
+  type InvestProgress,
+  type RateSource,
+  type ResolvedRate,
+} from '../../domain/investPlan';
 import { formatRate } from '../../domain/money';
 import type { YearMonth } from '../../domain/months';
 import type { Currency } from '../../domain/types';
@@ -56,12 +62,20 @@ export function rateOptions(returns: CurrencyReturns): { value: SourceKey; label
   ];
 }
 
-/** The month's income and what is left in one currency (0 when nothing was registered). */
+/**
+ * The month's income and what is left in one currency (0 when nothing was registered), and the
+ * suggestion with what was already invested from the budget.
+ */
 export function monthFigures(
   data: BudgetData,
   month: YearMonth,
   currency: Currency,
-): { income: number; left: number } {
+  percent: number,
+): { income: number; left: number; progress: InvestProgress } {
   const summary = summarizeMonth(data, month).find((s) => s.currency === currency);
-  return { income: summary?.income ?? 0, left: summary?.left ?? 0 };
+  return {
+    income: summary?.income ?? 0,
+    left: summary?.left ?? 0,
+    progress: investProgress(summary, percent),
+  };
 }

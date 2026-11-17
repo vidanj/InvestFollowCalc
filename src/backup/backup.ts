@@ -1,6 +1,7 @@
 import type { DataSet } from '../db/schema';
 import { SCHEMA_VERSION, upgradeBudgetItemV2, type V2BudgetItem } from '../db/schema';
 import { validateBudgetItem } from '../domain/budget';
+import { isLinkConsistent } from '../domain/budgetLink';
 import { validateCredit } from '../domain/credit';
 import { validateTimeline } from '../domain/validation';
 import { decrypt, DecryptionError, encrypt, PBKDF2_ITERATIONS } from './crypto';
@@ -53,6 +54,8 @@ const MIGRATIONS: Record<number, (payload: unknown) => unknown> = {
       budgetItems: items.map(upgradeBudgetItemV2),
     };
   },
+  // v4: budget items may mirror a movement (`sourceEventId`); older items simply have none.
+  3: (payload) => ({ ...(payload as object), schemaVersion: 4 }),
 };
 
 function migrate(payload: unknown): unknown {
@@ -97,6 +100,23 @@ function checkIntegrity({ accounts, events, budgetItems, credits }: BackupData):
   }
   if (hasDuplicates(budgetItems) || budgetItems.some((i) => validateBudgetItem(i).length > 0)) {
     throw new BackupError('INVALID_CONTENT', 'invalid budget item');
+  }
+  const accountsById = new Map(accounts.map((a) => [a.id, a]));
+  const eventsById = new Map(events.map((e) => [e.id, e]));
+  const linkedEvents = new Set<string>();
+  for (const item of budgetItems) {
+    if (item.sourceEventId === undefined) continue;
+    const event = eventsById.get(item.sourceEventId);
+    const account = event && accountsById.get(event.accountId);
+    if (
+      !event ||
+      !account ||
+      linkedEvents.has(event.id) ||
+      !isLinkConsistent(item, event, account.currency)
+    ) {
+      throw new BackupError('INVALID_CONTENT', 'invalid budget link');
+    }
+    linkedEvents.add(event.id);
   }
   if (hasDuplicates(credits) || credits.some((c) => validateCredit(c).length > 0)) {
     throw new BackupError('INVALID_CONTENT', 'invalid credit');

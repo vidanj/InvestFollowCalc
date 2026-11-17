@@ -18,7 +18,10 @@ import {
   type IsoDate,
 } from './types';
 
-/** Fixed list; `credit` also holds the payments of registered credits. */
+/**
+ * Fixed list; `credit` also holds the payments of registered credits and `investment` the
+ * contributions to the user's accounts taken from the budget.
+ */
 export const EXPENSE_CATEGORIES = [
   'housing',
   'services',
@@ -29,6 +32,7 @@ export const EXPENSE_CATEGORIES = [
   'leisure',
   'small',
   'credit',
+  'investment',
   'other',
 ] as const;
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
@@ -64,6 +68,11 @@ interface BudgetItemBase {
    * paused for a month). They count 0 that month and come back the next.
    */
   skippedMonths?: YearMonth[];
+  /**
+   * Set when the item mirrors a contribution (expense) or withdrawal (income) of an investment
+   * account: the id of that movement. Such items are one-offs kept in sync with the movement.
+   */
+  sourceEventId?: string;
 }
 
 export interface IncomeItem extends BudgetItemBase {
@@ -518,7 +527,8 @@ export type BudgetIssueCode =
   | 'INVALID_SKIP'
   | 'INVALID_DUE_DAY'
   | 'END_BEFORE_START'
-  | 'END_WITHOUT_RECURRING';
+  | 'END_WITHOUT_RECURRING'
+  | 'INVALID_LINK';
 
 /** Checks an item before it is stored. The UI maps each code to a text in `src/i18n`. */
 export function validateBudgetItem(item: BudgetItemDraft): BudgetIssueCode[] {
@@ -561,6 +571,13 @@ export function validateBudgetItem(item: BudgetItemDraft): BudgetIssueCode[] {
     else if (!isYearMonth(item.endMonth)) issues.push('INVALID_MONTH');
     else if (isYearMonth(item.month) && compareYearMonths(item.endMonth, item.month) < 0) {
       issues.push('END_BEFORE_START');
+    }
+  }
+  if (item.sourceEventId !== undefined) {
+    // A mirrored movement happens once, and contributions count as investment.
+    const category = item.kind === 'income' || item.category === 'investment';
+    if (item.sourceEventId.length === 0 || item.repeat !== 'none' || !category) {
+      issues.push('INVALID_LINK');
     }
   }
   return issues;

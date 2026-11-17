@@ -92,7 +92,7 @@ function entryDetail({ item, times }: MonthEntry): string {
   const monthName = MONTH_NAMES[Number(item.month.slice(5)) - 1] ?? '';
   const { dueDay } = item;
   const repeats = {
-    none: t.oneOff,
+    none: item.sourceEventId === undefined ? t.oneOff : t.fromPortfolio,
     weekly: t.everyWeek(times, formatMoney(item.amount, item.currency)),
     monthly: dueDay === undefined ? t.everyMonth : t.everyMonthOn(dueDay),
     yearly: dueDay === undefined ? t.everyYear(monthName) : t.everyYearOn(dueDay, monthName),

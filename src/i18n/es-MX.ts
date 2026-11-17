@@ -130,6 +130,8 @@ const repositoryMessages: Record<RepositoryErrorCode, string> = {
   INVALID_INVEST_PLAN: 'Revisa el porcentaje y la tasa para invertir.',
   CANNOT_DELETE_FIRST_PLAN:
     'El saldo con el que registraste el crédito no se puede quitar; edita el crédito o elimínalo.',
+  LINKED_ITEM:
+    'Este concepto viene de un movimiento de tu portafolio; cámbialo desde el movimiento en la cuenta.',
 };
 
 const budgetIssueMessages: Record<BudgetIssueCode, string> = {
@@ -145,6 +147,7 @@ const budgetIssueMessages: Record<BudgetIssueCode, string> = {
   INVALID_DUE_DAY:
     'El día del cargo va del 1 al 31 y solo aplica a gastos que se repiten cada mes o cada año.',
   END_WITHOUT_RECURRING: 'Solo un concepto que se repite puede tener mes final.',
+  INVALID_LINK: 'Un concepto que viene de un movimiento de tu portafolio no puede repetirse.',
 };
 
 const creditIssueMessages: Record<CreditIssueCode, string> = {
@@ -180,6 +183,7 @@ const categoryLabels: Record<ExpenseCategory, string> = {
   leisure: 'Entretenimiento',
   small: 'Gastos hormiga',
   credit: 'Créditos y deudas',
+  investment: 'Inversión',
   other: 'Otros',
 };
 
@@ -194,6 +198,7 @@ const categoryShortLabels: Record<ExpenseCategory, string> = {
   leisure: 'Entretenimiento',
   small: 'Hormiga',
   credit: 'Créditos',
+  investment: 'Inversión',
   other: 'Otros',
 };
 
@@ -352,6 +357,7 @@ export const strings = {
     everyWeek: (times: number, amount: string) => `Cada semana · ${times} × ${amount} este mes`,
     until: (month: string) => `hasta ${month}`,
     oneOff: 'Solo este mes',
+    fromPortfolio: 'Desde tu portafolio',
     skipLabel: 'No lo pago este mes',
     skipAria: (name: string, month: string) => `No pagar ${name} en ${month}`,
     skippedDetail: (amount: string) => `Omitido este mes: no cuentan ${amount}`,
@@ -417,6 +423,14 @@ export const strings = {
     notFound: 'Este concepto ya no existe.',
     creditHint:
       'Para un crédito con intereses, mejor regístralo como crédito: así se calcula cada pago.',
+    linkedExpenseTitle: 'Aportación a tu portafolio',
+    linkedIncomeTitle: 'Retiro de tu portafolio',
+    linkedNotice: (kind: 'income' | 'expense', account: string) =>
+      kind === 'expense'
+        ? `Este gasto es una aportación a ${account}. Se actualiza solo: para cambiarlo o eliminarlo, edita el movimiento en la cuenta.`
+        : `Este ingreso es un retiro de ${account}. Se actualiza solo: para cambiarlo o eliminarlo, edita el movimiento en la cuenta.`,
+    linkedUnknownAccount: 'tu cuenta',
+    goToMovement: 'Ir al movimiento',
   },
   year: {
     title: (year: number) => `Tu año ${year}`,
@@ -440,6 +454,11 @@ export const strings = {
     capped: (percent: number, target: string) =>
       `Es todo lo que te queda; el ${percent}% de tus ingresos serían ${target}.`,
     nothingLeft: 'Este mes no te queda dinero para invertir.',
+    invested: (invested: string, amount: string) => `Ya invertiste ${invested} de ${amount}.`,
+    pending: (pending: string) => `Te faltan ${pending}.`,
+    reached: 'Ya llegaste a lo sugerido este mes.',
+    investedLabel: 'Ya invertiste este mes',
+    investedDetail: 'Aportaciones registradas desde tu presupuesto, menos retiros.',
     noIncome: 'Registra tus ingresos del mes para calcular cuánto invertir.',
     projectionLine: (years: string, value: string, generated: string) =>
       `En ${years} podría valer ${value} (${generated} generados).`,
@@ -756,6 +775,23 @@ export const strings = {
     previewTitle: 'Al guardar',
     deleteMovement: 'Eliminar movimiento',
     deleteWarning: 'Se recalcularán las ganancias de la cuenta.',
+    deleteLinkedWarning:
+      'Se recalcularán las ganancias de la cuenta y también se quitará de tu presupuesto.',
+    fromBudget: {
+      deposit: 'Sale de mi presupuesto del mes',
+      withdrawal: 'Entra a mi presupuesto del mes',
+    },
+    fromBudgetHelp: {
+      deposit:
+        'Se registra como gasto de «Inversión» en el presupuesto de ese mes, para que no lo captures dos veces.',
+      withdrawal:
+        'Se registra como ingreso en el presupuesto de ese mes, para que no lo captures dos veces.',
+    },
+    budgetName: {
+      deposit: (account: string) => `Aportación · ${account}`,
+      withdrawal: (account: string) => `Retiro · ${account}`,
+    },
+    budgetFlash: (month: string) => `También quedó en tu presupuesto de ${month}.`,
   },
   preview: {
     generated: (money: string, duration: string) => `Generaste ${money} en ${duration}.`,

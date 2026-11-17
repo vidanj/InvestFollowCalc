@@ -20,7 +20,6 @@ import {
   projectContributions,
   PROJECTION_YEARS,
   resolveRate,
-  suggestInvestment,
   type InvestPlan,
   type RateSource,
 } from '../../domain/investPlan';
@@ -29,6 +28,7 @@ import { toYearMonth, type YearMonth } from '../../domain/months';
 import type { Currency } from '../../domain/types';
 import { formatMonth, strings } from '../../i18n/es-MX';
 import { budgetDataSafely, budgetPath, monthParam } from '../budget/budgetHelpers';
+import { InvestedLine } from './InvestCard';
 import { monthFigures, rateOptions, sourceKey, type SourceKey } from './investHelpers';
 
 const t = strings.invest;
@@ -80,8 +80,11 @@ function Planner({ data, accounts, plan, month, currency }: PlannerProps) {
     if (nextSource) save({ ...plan, sources: { ...plan.sources, [currency]: nextSource } });
   };
 
-  const { income, left } = monthFigures(data, month, currency);
-  const suggestion = suggestInvestment(income, left, percent ?? plan.percent);
+  const {
+    income,
+    left,
+    progress: suggestion,
+  } = monthFigures(data, month, currency, percent ?? plan.percent);
   const points =
     rate !== null && rate > -1 && suggestion.amount > 0
       ? projectContributions(suggestion.amount, rate, MAX_MONTHS)
@@ -106,8 +109,13 @@ function Planner({ data, accounts, plan, month, currency }: PlannerProps) {
           }
         />
       </dl>
-      {income === 0 && <Notice>{t.noIncome}</Notice>}
-      {income > 0 && suggestion.amount === 0 && <Notice>{t.nothingLeft}</Notice>}
+      {suggestion.invested > 0 && (
+        <Notice>
+          <InvestedLine invested={suggestion.invested} amount={suggestion.amount} money={money} />
+        </Notice>
+      )}
+      {suggestion.income <= 0 && <Notice>{t.noIncome}</Notice>}
+      {suggestion.income > 0 && suggestion.amount === 0 && <Notice>{t.nothingLeft}</Notice>}
 
       <section className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <TextField

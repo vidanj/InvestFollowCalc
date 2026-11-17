@@ -37,6 +37,22 @@ export function useBudgetItem(id: string): BudgetItemRecord | null | undefined {
   return useLiveQuery(async () => (await repository.getBudgetItem(id)) ?? null, [repository, id]);
 }
 
+export function useEvent(id: string): EventRecord | null | undefined {
+  const repository = useRepository();
+  return useLiveQuery(async () => (await repository.getEvent(id)) ?? null, [repository, id]);
+}
+
+/** The budget item mirroring a movement; `null` when it has none (or no movement is given). */
+export function useLinkedBudgetItem(
+  eventId: string | undefined,
+): BudgetItemRecord | null | undefined {
+  const repository = useRepository();
+  return useLiveQuery(
+    async () => (eventId ? ((await repository.getLinkedBudgetItem(eventId)) ?? null) : null),
+    [repository, eventId],
+  );
+}
+
 export function useCredits(): CreditRecord[] | undefined {
   const repository = useRepository();
   return useLiveQuery(() => repository.listCredits(), [repository]);

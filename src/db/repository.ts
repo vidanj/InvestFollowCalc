@@ -7,6 +7,7 @@ import {
   withSkipped,
   type BudgetItemDraft,
 } from '../domain/budget';
+import { linkedBudgetItem } from '../domain/budgetLink';
 import { validateCredit, withPlan, type CreditDraft, type CreditPlan } from '../domain/credit';
 import { compareIsoDates } from '../domain/dates';
 import { DEFAULT_INVEST_PLAN, parseInvestPlan, type InvestPlan } from '../domain/investPlan';
@@ -42,7 +43,8 @@ export type RepositoryErrorCode =
   | 'CREDIT_NOT_FOUND'
   | 'INVALID_CREDIT'
   | 'CANNOT_DELETE_FIRST_PLAN'
-  | 'INVALID_INVEST_PLAN';
+  | 'INVALID_INVEST_PLAN'
+  | 'LINKED_ITEM';
 
 export class RepositoryError extends Error {
   readonly code: RepositoryErrorCode;
@@ -78,6 +80,13 @@ export interface AccountPatch {
   archived?: boolean;
 }
 
+/**
+ * Whether a contribution or withdrawal also goes into the month's budget, and with which name:
+ * a name links it (creating or updating its budget item), `null` unlinks it, and `undefined`
+ * keeps the link as it is (synced with the movement).
+ */
+export type BudgetLink = string | null | undefined;
+
 export interface AccountWithEvents {
   account: AccountRecord;
   events: EventRecord[];
@@ -92,6 +101,11 @@ function assertValidBudgetItem(draft: BudgetItemDraft): void {
 
 function assertValidCredit(draft: CreditDraft): void {
   if (validateCredit(draft).length > 0) throw new RepositoryError('INVALID_CREDIT');
+}
+
+/** Items mirroring a movement change only through the movement. */
+function assertNotLinked(item: { sourceEventId?: string }): void {
+  if (item.sourceEventId !== undefined) throw new RepositoryError('LINKED_ITEM');
 }
 
 function normalizeName(name: string): string {
@@ -169,7 +183,8 @@ export class Repository {
   }
 
   async updateAccount(id: string, patch: AccountPatch): Promise<AccountRecord> {
-    return this.db.transaction('rw', this.db.accounts, this.db.meta, async () => {
+    const tables = [this.db.accounts, this.db.events, this.db.budgetItems, this.db.meta];
+    return this.db.transaction('rw', tables, async () => {
       const current = await this.db.accounts.get(id);
       if (!current) throw new RepositoryError('ACCOUNT_NOT_FOUND');
       const now = this.clock.now();
@@ -178,16 +193,25 @@ export class Repository {
       if (patch.currency !== undefined) updated.currency = patch.currency;
       if (patch.color !== undefined) updated.color = patch.color;
       if (patch.archived !== undefined) updated.archived = patch.archived;
+      if (updated.currency !== current.currency) {
+        // Budget items mirroring its movements follow the account's currency.
+        const linked = await this.linkedItemsOf(id);
+        await this.db.budgetItems.bulkPut(
+          linked.map((item) => ({ ...item, currency: updated.currency, updatedAt: now })),
+        );
+      }
       await this.db.accounts.put(updated);
       await this.touch(now);
       return updated;
     });
   }
 
-  /** Deletes the account and all of its movements. */
+  /** Deletes the account, all of its movements and the budget items mirroring them. */
   async deleteAccount(id: string): Promise<void> {
-    await this.db.transaction('rw', this.db.accounts, this.db.events, this.db.meta, async () => {
+    const tables = [this.db.accounts, this.db.events, this.db.budgetItems, this.db.meta];
+    await this.db.transaction('rw', tables, async () => {
       if (!(await this.db.accounts.get(id))) throw new RepositoryError('ACCOUNT_NOT_FOUND');
+      await this.db.budgetItems.bulkDelete((await this.linkedItemsOf(id)).map((i) => i.id));
       await this.db.events.where('accountId').equals(id).delete();
       await this.db.accounts.delete(id);
       await this.touch(this.clock.now());
@@ -206,11 +230,12 @@ export class Repository {
     return this.db.events.get(id);
   }
 
-  async addEvent(accountId: string, draft: EventDraft): Promise<EventRecord> {
-    return this.db.transaction('rw', this.db.accounts, this.db.events, this.db.meta, async () => {
-      if (!(await this.db.accounts.get(accountId))) {
-        throw new RepositoryError('ACCOUNT_NOT_FOUND');
-      }
+  /** Adds a movement; with `budgetName`, a contribution or withdrawal also goes to the budget. */
+  async addEvent(accountId: string, draft: EventDraft, budgetName?: string): Promise<EventRecord> {
+    const tables = [this.db.accounts, this.db.events, this.db.budgetItems, this.db.meta];
+    return this.db.transaction('rw', tables, async () => {
+      const account = await this.db.accounts.get(accountId);
+      if (!account) throw new RepositoryError('ACCOUNT_NOT_FOUND');
       const existing = await this.listEvents(accountId);
       const now = this.clock.now();
       const record: EventRecord = {
@@ -223,16 +248,23 @@ export class Repository {
       };
       this.assertValid(existing, record);
       await this.db.events.add(record);
+      await this.syncBudgetLink(record, account.currency, budgetName ?? null, now);
       await this.touch(now);
       return record;
     });
   }
 
-  /** Replaces the event's data with `draft`, keeping its id, account and capture order. */
-  async updateEvent(id: string, draft: EventDraft): Promise<EventRecord> {
-    return this.db.transaction('rw', this.db.events, this.db.meta, async () => {
+  /**
+   * Replaces the event's data with `draft`, keeping its id, account and capture order. Its budget
+   * item, if any, follows the change (see `BudgetLink`).
+   */
+  async updateEvent(id: string, draft: EventDraft, budget?: BudgetLink): Promise<EventRecord> {
+    const tables = [this.db.accounts, this.db.events, this.db.budgetItems, this.db.meta];
+    return this.db.transaction('rw', tables, async () => {
       const current = await this.db.events.get(id);
       if (!current) throw new RepositoryError('EVENT_NOT_FOUND');
+      const account = await this.db.accounts.get(current.accountId);
+      if (!account) throw new RepositoryError('ACCOUNT_NOT_FOUND');
       const existing = await this.listEvents(current.accountId);
       const now = this.clock.now();
       const record: EventRecord = {
@@ -245,14 +277,18 @@ export class Repository {
       };
       this.assertValid(existing, record);
       await this.db.events.put(record);
+      await this.syncBudgetLink(record, account.currency, budget, now);
       await this.touch(now);
       return record;
     });
   }
 
-  /** Deletes a movement. The initial balance can only go away with the whole account. */
+  /**
+   * Deletes a movement and its budget item. The initial balance can only go away with the whole
+   * account.
+   */
   async deleteEvent(id: string): Promise<void> {
-    await this.db.transaction('rw', this.db.events, this.db.meta, async () => {
+    await this.db.transaction('rw', this.db.events, this.db.budgetItems, this.db.meta, async () => {
       const current = await this.db.events.get(id);
       if (!current) throw new RepositoryError('EVENT_NOT_FOUND');
       const existing = await this.listEvents(current.accountId);
@@ -260,7 +296,42 @@ export class Repository {
       const issues = validateRemoval(existing, id);
       if (issues.length > 0) throw new RepositoryError('INVALID_EVENT', issues);
       await this.db.events.delete(id);
+      await this.db.budgetItems.where('sourceEventId').equals(id).delete();
       await this.touch(this.clock.now());
+    });
+  }
+
+  /** The budget item mirroring the movement `eventId`, if it goes into the budget. */
+  async getLinkedBudgetItem(eventId: string): Promise<BudgetItemRecord | undefined> {
+    return this.db.budgetItems.where('sourceEventId').equals(eventId).first();
+  }
+
+  /** Budget items mirroring movements of the account. */
+  private async linkedItemsOf(accountId: string): Promise<BudgetItemRecord[]> {
+    const ids = await this.db.events.where('accountId').equals(accountId).primaryKeys();
+    return this.db.budgetItems.where('sourceEventId').anyOf(ids).toArray();
+  }
+
+  /** Creates, updates or removes the budget item of `event` as `link` says. */
+  private async syncBudgetLink(
+    event: EventRecord,
+    currency: Currency,
+    link: BudgetLink,
+    now: string,
+  ): Promise<void> {
+    const current = await this.getLinkedBudgetItem(event.id);
+    const name = link === undefined ? current?.name : link;
+    if (event.type === 'balance' || name === null || name === undefined) {
+      if (current) await this.db.budgetItems.delete(current.id);
+      return;
+    }
+    const item = linkedBudgetItem(event, currency, name);
+    assertValidBudgetItem(item);
+    await this.db.budgetItems.put({
+      ...item,
+      id: current?.id ?? crypto.randomUUID(),
+      createdAt: current?.createdAt ?? now,
+      updatedAt: now,
     });
   }
 
@@ -275,6 +346,7 @@ export class Repository {
   }
 
   async addBudgetItem(draft: BudgetItemDraft): Promise<BudgetItemRecord> {
+    assertNotLinked(draft);
     const item = { ...draft, name: draft.name.trim() };
     assertValidBudgetItem(item);
     const now = this.clock.now();
@@ -303,6 +375,8 @@ export class Repository {
     return this.db.transaction('rw', this.db.budgetItems, this.db.meta, async () => {
       const current = await this.db.budgetItems.get(id);
       if (!current) throw new RepositoryError('BUDGET_ITEM_NOT_FOUND');
+      assertNotLinked(current);
+      assertNotLinked(draft);
       const now = this.clock.now();
       const item = { ...draft, name: draft.name.trim() };
 
@@ -342,6 +416,7 @@ export class Repository {
     await this.db.transaction('rw', this.db.budgetItems, this.db.meta, async () => {
       const current = await this.db.budgetItems.get(id);
       if (!current) throw new RepositoryError('BUDGET_ITEM_NOT_FOUND');
+      assertNotLinked(current);
       const now = this.clock.now();
       if (fromMonth !== undefined && canSplitAt(current, fromMonth)) {
         await this.db.budgetItems.put({ ...endBefore(current, fromMonth), updatedAt: now });
@@ -357,6 +432,7 @@ export class Repository {
     return this.db.transaction('rw', this.db.budgetItems, this.db.meta, async () => {
       const current = await this.db.budgetItems.get(id);
       if (!current) throw new RepositoryError('BUDGET_ITEM_NOT_FOUND');
+      assertNotLinked(current);
       if (!canSkip(current)) throw new RepositoryError('INVALID_BUDGET_ITEM');
       const now = this.clock.now();
       const record: BudgetItemRecord = {

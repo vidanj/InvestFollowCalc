@@ -2,6 +2,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_INVEST_PLAN,
+  investProgress,
   investmentReturns,
   parseInvestPlan,
   projectContributions,
@@ -9,10 +10,116 @@ import {
   suggestInvestment,
   type CurrencyReturns,
 } from '../investPlan';
+import { summarizeMonth, type BudgetItem, type ExpenseItem, type IncomeItem } from '../budget';
 import { account, balance, deposit, withdrawal } from './builders';
 
 // Projection values come from an independent reference (exact decimals, cents rounded half up
 // every month), cross-checked against the closed-form annuity formula.
+
+describe('investProgress', () => {
+  const sueldo: IncomeItem = {
+    id: 'i1',
+    kind: 'income',
+    name: 'Sueldo',
+    amount: 3_000_000,
+    currency: 'MXN',
+    month: '2026-01',
+    repeat: 'monthly',
+  };
+  const renta: ExpenseItem = {
+    id: 'x1',
+    kind: 'expense',
+    category: 'housing',
+    name: 'Renta',
+    amount: 1_000_000,
+    currency: 'MXN',
+    month: '2026-01',
+    repeat: 'monthly',
+  };
+  const linked = (kind: 'income' | 'expense', amount: number, id: string): BudgetItem =>
+    kind === 'income'
+      ? { ...sueldo, id, amount, repeat: 'none', sourceEventId: `e-${id}` }
+      : { ...renta, id, amount, category: 'investment', repeat: 'none', sourceEventId: `e-${id}` };
+  const summary = (items: BudgetItem[]) =>
+    summarizeMonth({ items, creditPayments: [] }, '2026-01').find((s) => s.currency === 'MXN');
+
+  it('equals the plain suggestion without linked movements', () => {
+    expect(investProgress(summary([sueldo, renta]), 20)).toEqual({
+      ...suggestInvestment(3_000_000, 2_000_000, 20),
+      income: 3_000_000,
+      invested: 0,
+      pending: 600_000,
+    });
+    expect(investProgress(undefined, 20)).toEqual({
+      target: 0,
+      amount: 0,
+      capped: false,
+      income: 0,
+      invested: 0,
+      pending: 0,
+    });
+  });
+
+  it('counts linked contributions as invested, not as expenses that shrink the suggestion', () => {
+    const s = summary([sueldo, renta, linked('expense', 250_000, 'a')]);
+    expect(s?.left).toBe(1_750_000);
+    expect(investProgress(s, 20)).toEqual({
+      target: 600_000,
+      amount: 600_000,
+      capped: false,
+      income: 3_000_000,
+      invested: 250_000,
+      pending: 350_000,
+    });
+  });
+
+  it('nets linked withdrawals and leaves them out of the income for the target', () => {
+    const s = summary([
+      sueldo,
+      renta,
+      linked('expense', 700_000, 'a'),
+      linked('income', 900_000, 'b'),
+    ]);
+    expect(s?.income).toBe(3_900_000);
+    expect(investProgress(s, 20)).toEqual({
+      target: 600_000,
+      amount: 600_000,
+      capped: false,
+      income: 3_000_000,
+      invested: 0, // withdrew more than contributed: never negative
+      pending: 600_000,
+    });
+  });
+
+  it('never leaves a negative pending amount', () => {
+    const s = summary([sueldo, renta, linked('expense', 900_000, 'a')]);
+    expect(investProgress(s, 20)).toMatchObject({ amount: 600_000, invested: 900_000, pending: 0 });
+  });
+
+  it('property: linked movements never change target and amount', () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.record({
+            kind: fc.constantFrom('income' as const, 'expense' as const),
+            amount: fc.integer({ min: 1, max: 10_000_000 }),
+          }),
+          { maxLength: 6 },
+        ),
+        fc.integer({ min: 0, max: 100 }),
+        (moves, percent) => {
+          const base = investProgress(summary([sueldo, renta]), percent);
+          const items = moves.map((m, i) => linked(m.kind, m.amount, `m${i}`));
+          const withLinks = investProgress(summary([sueldo, renta, ...items]), percent);
+          expect(withLinks.target).toBe(base.target);
+          expect(withLinks.amount).toBe(base.amount);
+          expect(withLinks.pending).toBe(Math.max(0, base.amount - withLinks.invested));
+          expect(withLinks.invested).toBeGreaterThanOrEqual(0);
+        },
+      ),
+    );
+  });
+});
 
 describe('suggestInvestment', () => {
   it('suggests a share of the income', () => {

@@ -41,6 +41,10 @@ Plan completo y fases: [docs/plan.md](docs/plan.md).
 - Presupuesto: `te queda = ingresos − gastos` y categorías = gastos; créditos: cada pago = capital +
   interés + IVA, saldo final 0, `total = capital − ajustes de saldo + intereses + IVA`. Verificadas
   con fast-check en `src/domain/__tests__/budgetInvariants.test.ts`.
+- Aportación/retiro "desde el presupuesto": ítem de una sola vez con `sourceEventId` (gasto
+  `investment` / ingreso), mismo monto, mes de la fecha y moneda de la cuenta; sólo cambia vía el
+  movimiento (`LINKED_ITEM`). Inversión sugerida los excluye y muestra "ya invertido"
+  (`investProgress`); sin vínculos = `suggestInvestment`.
 - Interés de créditos: tasa anual / 360 × (365 / pagos por año, a 4 decimales), redondeado al
   centavo por periodo; IVA 16% aparte del pago fijo. Detalle en `docs/calculos.md`.
 - Repeticiones: semanal = cargos reales del mes cada 7 días desde `firstDate`; anual = completo en su

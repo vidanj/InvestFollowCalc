@@ -53,8 +53,11 @@ muestra:
   pones el día en que se cobran.
 - **"No lo pago este mes":** si un mes decides no pagar una suscripción u otro gasto mensual o
   semanal, márcalo en la lista; ese mes no cuenta y el siguiente vuelve a contar.
+- **Aportaciones desde el presupuesto:** al registrar una aportación (o un retiro) en tu
+  portafolio, marca "Sale de mi presupuesto del mes" y se agrega sola como gasto de _Inversión_ (o
+  como ingreso), sin capturarla dos veces. Se actualiza o elimina junto con el movimiento.
 - **Inversión sugerida:** un porcentaje de tus ingresos (20% por omisión), nunca más de lo que te
-  queda, y **cuánto generaría** si lo inviertes cada mes con el rendimiento real de tus inversiones
+  queda, cuánto **ya invertiste** ese mes desde tu presupuesto, y **cuánto generaría** si lo inviertes cada mes con el rendimiento real de tus inversiones
   (o una tasa que tú escribas), a 1, 3, 5 y 10 años.
 - **Tu año:** cuánto ganas, gastas y **te quedará al cierre del año**, con lo registrado y la
   proyección de los meses que faltan.

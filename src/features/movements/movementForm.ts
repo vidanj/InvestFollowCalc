@@ -13,6 +13,8 @@ export interface MovementFormValues {
   amount: string;
   /** Only for deposits/withdrawals; empty when unknown. */
   balanceAfter: string;
+  /** Deposits/withdrawals only: the money also leaves (or enters) the month's budget. */
+  fromBudget: boolean;
 }
 
 export interface MovementFormErrors {
@@ -28,16 +30,18 @@ export type ParsedMovement =
 export const DRAFT_EVENT_ID = 'draft';
 
 export function emptyMovementValues(today: IsoDate): MovementFormValues {
-  return { type: 'balance', date: today, amount: '', balanceAfter: '' };
+  return { type: 'balance', date: today, amount: '', balanceAfter: '', fromBudget: false };
 }
 
-export function valuesFromEvent(event: AccountEvent): MovementFormValues {
+/** `fromBudget`: the event already has a budget item mirroring it. */
+export function valuesFromEvent(event: AccountEvent, fromBudget = false): MovementFormValues {
   if (event.type === 'balance') {
     return {
       type: 'balance',
       date: event.date,
       amount: formatAmountInput(event.balance),
       balanceAfter: '',
+      fromBudget: false,
     };
   }
   return {
@@ -45,7 +49,17 @@ export function valuesFromEvent(event: AccountEvent): MovementFormValues {
     date: event.date,
     amount: formatAmountInput(event.amount),
     balanceAfter: event.balanceAfter === undefined ? '' : formatAmountInput(event.balanceAfter),
+    fromBudget,
   };
+}
+
+/**
+ * The name the movement gets in the budget when it goes there, or `null` when it does not (not
+ * asked for, or not a contribution/withdrawal).
+ */
+export function budgetNameFor(values: MovementFormValues, accountName: string): string | null {
+  if (values.type === 'balance' || !values.fromBudget) return null;
+  return strings.movement.budgetName[values.type](accountName);
 }
 
 /** Turns form text into an event draft, or field errors. Dates after `today` are rejected. */

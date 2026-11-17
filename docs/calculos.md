@@ -152,7 +152,22 @@ El código está en [src/domain/budget.ts](../src/domain/budget.ts).
   original termina el mes anterior y la versión nueva empieza en el mes que se está viendo (uno
   semanal conserva su día de la semana). Lo mismo al "dejar de repetir desde este mes".
 - Categorías de gasto: vivienda, servicios, comida y súper, transporte, suscripciones, salud,
-  entretenimiento, gastos hormiga, créditos y deudas, otros.
+  entretenimiento, gastos hormiga, créditos y deudas, inversión, otros.
+- **Aportaciones y retiros desde el presupuesto.** Al registrar una aportación o un retiro en una
+  cuenta del portafolio se puede marcar "Sale de mi presupuesto del mes" (o "Entra a…" en un
+  retiro). Entonces la app crea sola un concepto **de una sola vez**, ligado al movimiento
+  ([src/domain/budgetLink.ts](../src/domain/budgetLink.ts)):
+
+  | Movimiento | En el presupuesto                                         |
+  | ---------- | --------------------------------------------------------- |
+  | Aportación | gasto de categoría **inversión**, "Aportación · <cuenta>" |
+  | Retiro     | ingreso, "Retiro · <cuenta>"                              |
+
+  Mismo monto, en el mes de la fecha del movimiento y en la moneda de la cuenta. Cuenta como
+  cualquier gasto o ingreso en lo que te queda. Sólo cambia desde el movimiento: al editarlo se
+  actualiza (monto, mes, aportación ↔ retiro), al desmarcar la casilla o convertirlo en
+  "Actualizar saldo" se quita, y se elimina junto con el movimiento o la cuenta. Del lado del
+  portafolio nada cambia: sigue siendo capital aportado o retirado, nunca ganancia.
 
 ## Resumen de un mes
 
@@ -229,6 +244,21 @@ sugerido = el menor entre la meta y lo que te queda; nunca menos de 0
 
 Si los gastos dejan menos que la meta, se sugiere sólo lo que queda (y se avisa). Sin ingresos o sin
 dinero que quede, no hay sugerencia.
+
+Las aportaciones y retiros **ligados al presupuesto** (ver arriba) no cambian la sugerencia: una
+aportación es la inversión misma, no un gasto que la reduzca, y un retiro es tu propio dinero que
+regresa, no un ingreso del que invertir un porcentaje. Con sus montos del mes:
+
+```
+ingresos para la meta = ingresos − retiros ligados
+lo que te queda       = lo que te queda + aportaciones ligadas − retiros ligados
+ya invertido          = aportaciones ligadas − retiros ligados; nunca menos de 0
+te falta              = sugerido − ya invertido; nunca menos de 0
+```
+
+Ejemplo: ingresos 30,000, renta 10,000 y una aportación ligada de 2,500. Te quedan 17,500, pero la
+meta sigue siendo 20% × 30,000 = 6,000 y el sugerido 6,000: "Ya invertiste 2,500 de 6,000. Te
+faltan 3,500." Sin movimientos ligados todo queda igual que antes.
 
 ### Cuánto generaría
 

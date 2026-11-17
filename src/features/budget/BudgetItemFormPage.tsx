@@ -9,7 +9,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { SelectField } from '../../components/SelectField';
 import { TextField } from '../../components/TextField';
-import { useBudgetItem } from '../../db/hooks';
+import { useAccount, useBudgetItem, useEvent } from '../../db/hooks';
 import { requestPersistentStorage } from '../../db/persistence';
 import { useRepository } from '../../db/repositoryContext';
 import type { BudgetItemRecord } from '../../db/schema';
@@ -22,6 +22,7 @@ import {
 } from '../../domain/budget';
 import { toIsoDate } from '../../domain/dates';
 import { toYearMonth, type YearMonth } from '../../domain/months';
+import { formatMoney } from '../../domain/money';
 import { CURRENCIES } from '../../domain/types';
 import { formatMonth, strings } from '../../i18n/es-MX';
 import { errorMessages } from '../errors';
@@ -341,6 +342,9 @@ function EditBudgetItem({ itemId, viewMonth }: { itemId: string; viewMonth: Year
   const item = useBudgetItem(itemId);
   if (item === undefined) return <p>{strings.common.loading}</p>;
   if (item === null) return <PageHeader title={t.notFound} backTo={budgetPath(viewMonth)} />;
+  if (item.sourceEventId !== undefined) {
+    return <LinkedBudgetItem item={item} eventId={item.sourceEventId} viewMonth={viewMonth} />;
+  }
   return (
     <>
       <PageHeader
@@ -348,6 +352,53 @@ function EditBudgetItem({ itemId, viewMonth }: { itemId: string; viewMonth: Year
         backTo={budgetPath(viewMonth)}
       />
       <BudgetItemForm key={item.id} viewMonth={viewMonth} kind={item.kind} editing={item} />
+    </>
+  );
+}
+
+interface LinkedBudgetItemProps {
+  item: BudgetItemRecord;
+  eventId: string;
+  viewMonth: YearMonth;
+}
+
+/** Items mirroring a portfolio movement are read-only here: they change with the movement. */
+function LinkedBudgetItem({ item, eventId, viewMonth }: LinkedBudgetItemProps) {
+  const event = useEvent(eventId);
+  const account = useAccount(event?.accountId ?? '');
+  const accountName = account?.name ?? t.linkedUnknownAccount;
+  const details = [
+    item.kind === 'expense' ? strings.budget.categories[item.category] : t.kinds.income,
+    formatMonth(item.month),
+  ];
+
+  return (
+    <>
+      <PageHeader
+        title={item.kind === 'income' ? t.linkedIncomeTitle : t.linkedExpenseTitle}
+        backTo={budgetPath(viewMonth)}
+      />
+      <div className="flex flex-col gap-5">
+        <div>
+          <p className="font-medium">{item.name}</p>
+          <p className="text-2xl font-semibold">{formatMoney(item.amount, item.currency)}</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400">{details.join(' · ')}</p>
+        </div>
+        <Notice>{t.linkedNotice(item.kind, accountName)}</Notice>
+        <div className="flex gap-2">
+          {event && (
+            <ButtonLink
+              className="flex-1"
+              to={`/accounts/${event.accountId}/movements/${event.id}`}
+            >
+              {t.goToMovement}
+            </ButtonLink>
+          )}
+          <ButtonLink variant="ghost" to={budgetPath(viewMonth)}>
+            {strings.common.back}
+          </ButtonLink>
+        </div>
+      </div>
     </>
   );
 }

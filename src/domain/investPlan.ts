@@ -1,3 +1,4 @@
+import type { MonthSummary } from './budget';
 import { MAX_RATE_BPS } from './credit';
 import { computeAccount } from './engine';
 import { computePortfolio, type PortfolioInput } from './portfolio';
@@ -40,6 +41,42 @@ export function suggestInvestment(income: Cents, left: Cents, percent: number): 
   const target = income <= 0 ? 0 : Number((BigInt(income) * BigInt(percent) * 2n + 100n) / 200n);
   const amount = Math.max(0, Math.min(target, left));
   return { target, amount, capped: amount < target };
+}
+
+export interface InvestProgress extends InvestSuggestion {
+  /** The month's income the target is a share of: without linked withdrawals. */
+  income: Cents;
+  /**
+   * Net money moved into the accounts from the month's budget: linked contributions minus linked
+   * withdrawals, never below 0.
+   */
+  invested: Cents;
+  /** What is still missing to reach the suggested amount (never below 0). */
+  pending: Cents;
+}
+
+/**
+ * The suggestion for one month and currency, and how much of it was already invested through
+ * movements linked to the budget. Linked items are left out of the suggestion itself: a linked
+ * contribution is the investment, not an expense that shrinks it, and a linked withdrawal is the
+ * user's own money coming back, not income to invest a share of. Without linked items it is
+ * exactly `suggestInvestment(income, left, percent)`.
+ */
+export function investProgress(
+  summary: Pick<MonthSummary, 'income' | 'left' | 'incomeItems' | 'expenseItems'> | undefined,
+  percent: number,
+): InvestProgress {
+  if (summary === undefined) {
+    return { ...suggestInvestment(0, 0, percent), income: 0, invested: 0, pending: 0 };
+  }
+  const linkedSum = (entries: readonly { item: { sourceEventId?: string }; amount: Cents }[]) =>
+    entries.filter((e) => e.item.sourceEventId !== undefined).reduce((a, e) => a + e.amount, 0);
+  const deposits = linkedSum(summary.expenseItems);
+  const withdrawals = linkedSum(summary.incomeItems);
+  const income = summary.income - withdrawals;
+  const suggestion = suggestInvestment(income, summary.left + deposits - withdrawals, percent);
+  const invested = Math.max(0, deposits - withdrawals);
+  return { ...suggestion, income, invested, pending: Math.max(0, suggestion.amount - invested) };
 }
 
 // --- Returns from the investments ---

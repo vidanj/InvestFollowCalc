@@ -76,6 +76,7 @@ const budgetItemBase = {
   endMonth: yearMonth.optional(),
   dueDay: z.number().int().optional(),
   skippedMonths: z.array(yearMonth).optional(),
+  sourceEventId: z.string().optional(),
   ...timestamps,
 };
 

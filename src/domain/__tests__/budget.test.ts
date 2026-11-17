@@ -529,4 +529,21 @@ describe('validateBudgetItem', () => {
   it('incomes have no category', () => {
     expect(validateBudgetItem(income('Sueldo', 30_000))).toEqual([]);
   });
+
+  it('accepts a mirrored movement only as a one-off, and contributions as investment', () => {
+    const linked = { repeat: 'none' as const, sourceEventId: 'e1' };
+    expect(validateBudgetItem(expense('Aportación', 500, 'investment', linked))).toEqual([]);
+    expect(validateBudgetItem(income('Retiro', 500, linked))).toEqual([]);
+    expect(validateBudgetItem(expense('Aportación', 500, 'other', linked))).toEqual([
+      'INVALID_LINK',
+    ]);
+    expect(
+      validateBudgetItem(expense('Aportación', 500, 'investment', { sourceEventId: 'e1' })),
+    ).toEqual(['INVALID_LINK']); // monthly
+    expect(validateBudgetItem(income('Retiro', 500, { ...linked, sourceEventId: '' }))).toEqual([
+      'INVALID_LINK',
+    ]);
+    // Investment expenses can also be typed by hand, without a movement.
+    expect(validateBudgetItem(expense('Ahorro', 500, 'investment'))).toEqual([]);
+  });
 });
