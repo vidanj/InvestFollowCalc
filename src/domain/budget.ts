@@ -69,6 +69,12 @@ interface BudgetItemBase {
    */
   skippedMonths?: YearMonth[];
   /**
+   * Monthly expenses without a charge day only: months the user marked as already paid (paid on
+   * a different day each month, so the app cannot tell on its own). They still count that month;
+   * they only stop being pending. Never a month that is also in `skippedMonths`.
+   */
+  paidMonths?: YearMonth[];
+  /**
    * Set when the item mirrors a contribution (expense) or withdrawal (income) of an investment
    * account: the id of that movement. Such items are one-offs kept in sync with the movement.
    */
@@ -89,6 +95,8 @@ export type BudgetItemDraft = DistributiveOmit<BudgetItem, 'id'>;
 
 type Schedule = Pick<BudgetItem, 'month' | 'repeat' | 'firstDate' | 'endMonth'>;
 type Skippable = Schedule & Pick<BudgetItem, 'kind' | 'skippedMonths'>;
+type Payable = Pick<BudgetItem, 'kind' | 'repeat' | 'dueDay' | 'paidMonths'>;
+type MarkedMonths = Pick<BudgetItem, 'skippedMonths' | 'paidMonths'>;
 
 function lastDayOf(month: YearMonth): IsoDate {
   return addDays(addMonths(`${month}-01`, 1), -1);
@@ -156,26 +164,44 @@ export function isActiveIn(item: Schedule, month: YearMonth): boolean {
   return scheduledIn(item, month) > 0;
 }
 
-/** `months` with `month` added (`skip`) or removed, sorted; `undefined` when none remain. */
-export function withSkipped(
+/**
+ * Only monthly expenses without a charge day can be marked as already paid in a month: the rest
+ * have their dates, and a dated charge passes on its own.
+ */
+export function canMarkPaid(item: Pick<BudgetItem, 'kind' | 'repeat' | 'dueDay'>): boolean {
+  return item.kind === 'expense' && item.repeat === 'monthly' && item.dueDay === undefined;
+}
+
+/** The user marked this item as already paid in `month`. */
+export function isPaidIn(item: Payable, month: YearMonth): boolean {
+  return canMarkPaid(item) && (item.paidMonths?.includes(month) ?? false);
+}
+
+/** `months` with `month` added (`include`) or removed, sorted; `undefined` when none remain. */
+export function withMonth(
   months: readonly YearMonth[] | undefined,
   month: YearMonth,
-  skip: boolean,
+  include: boolean,
 ): YearMonth[] | undefined {
   const next = [
-    ...new Set([...(months ?? []).filter((m) => m !== month), ...(skip ? [month] : [])]),
+    ...new Set([...(months ?? []).filter((m) => m !== month), ...(include ? [month] : [])]),
   ].sort(compareYearMonths);
   return next.length > 0 ? next : undefined;
 }
 
-/** `item` keeping only the skipped months that pass `keep`. */
-function filterSkipped<T extends Pick<BudgetItem, 'skippedMonths'>>(
+/** `item` keeping only the skipped and paid months that pass `keep`. */
+function filterMarkedMonths<T extends MarkedMonths>(
   item: T,
   keep: (month: YearMonth) => boolean,
 ): T {
-  const { skippedMonths, ...rest } = item;
-  const kept = skippedMonths?.filter(keep) ?? [];
-  return (kept.length > 0 ? { ...rest, skippedMonths: kept } : rest) as T;
+  const { skippedMonths, paidMonths, ...rest } = item;
+  const skipped = skippedMonths?.filter(keep) ?? [];
+  const paid = paidMonths?.filter(keep) ?? [];
+  return {
+    ...rest,
+    ...(skipped.length > 0 ? { skippedMonths: skipped } : {}),
+    ...(paid.length > 0 ? { paidMonths: paid } : {}),
+  } as T;
 }
 
 /**
@@ -190,7 +216,7 @@ export function canSplitAt(item: Schedule, month: YearMonth): boolean {
 
 /** The item as it was before `month`: it stops repeating the month before. */
 export function endBefore<T extends BudgetItem>(item: T, month: YearMonth): T {
-  const ended = filterSkipped(item, (m) => compareYearMonths(m, month) < 0);
+  const ended = filterMarkedMonths(item, (m) => compareYearMonths(m, month) < 0);
   return { ...ended, endMonth: addMonthsToYearMonth(month, -1) };
 }
 
@@ -199,7 +225,7 @@ export function endBefore<T extends BudgetItem>(item: T, month: YearMonth): T {
  * weekday: its first date moves to the first charge of its cadence inside `month`.
  */
 export function startingIn<T extends BudgetItemDraft>(draft: T, month: YearMonth): T {
-  const later = filterSkipped(draft, (m) => compareYearMonths(m, month) >= 0);
+  const later = filterMarkedMonths(draft, (m) => compareYearMonths(m, month) >= 0);
   if (later.repeat !== 'weekly' || later.firstDate === undefined) return { ...later, month };
   return { ...later, month, firstDate: nextWeekly(later.firstDate, `${month}-01`) };
 }
@@ -383,6 +409,11 @@ export interface FixedCharge {
 export interface ChargeDay {
   /** `null`: repeating expenses without a charge day, counted from the 1st. */
   date: IsoDate | null;
+  /**
+   * Charges without a day that the user marked as already paid this month: listed first and no
+   * longer pending. A dated day is never `paid` (it passes on its own).
+   */
+  paid: boolean;
   /** Largest first. */
   charges: FixedCharge[];
   /** What is charged that day. */
@@ -399,12 +430,13 @@ function chargeDatesIn(item: BudgetItem, month: YearMonth): (IsoDate | null)[] {
 
 /**
  * The month's fixed charges day by day, with the running total the account needs before each
- * day: charges without a day first (counted from the 1st), then by date. The last running total
- * is the month's `fixedCharges`.
+ * day: charges without a day first (counted from the 1st; those marked as paid before the rest),
+ * then by date. The last running total is the month's `fixedCharges`.
  */
 export function fixedChargeDays(
   summary: Pick<MonthSummary, 'month' | 'expenseItems' | 'credits'>,
 ): ChargeDay[] {
+  const paidUndated: FixedCharge[] = [];
   const undated: FixedCharge[] = [];
   const dated = new Map<IsoDate, FixedCharge[]>();
   const add = (date: IsoDate | null, charge: FixedCharge) => {
@@ -413,8 +445,16 @@ export function fixedChargeDays(
   };
   for (const { item } of summary.expenseItems) {
     if (item.repeat === 'none') continue;
+    const paid = isPaidIn(item, summary.month);
     for (const date of chargeDatesIn(item, summary.month)) {
-      add(date, { name: item.name, amount: item.amount, source: { kind: 'item', id: item.id } });
+      const charge: FixedCharge = {
+        name: item.name,
+        amount: item.amount,
+        source: { kind: 'item', id: item.id },
+      };
+      if (paid)
+        paidUndated.push(charge); // only undated items can be paid
+      else add(date, charge);
     }
   }
   for (const credit of summary.credits) {
@@ -423,16 +463,21 @@ export function fixedChargeDays(
     }
   }
 
-  const groups: [IsoDate | null, FixedCharge[]][] = [
-    ...(undated.length > 0 ? [[null, undated] as [null, FixedCharge[]]] : []),
-    ...[...dated].sort(([a], [b]) => compareIsoDates(a, b)),
+  const groups: Pick<ChargeDay, 'date' | 'paid' | 'charges'>[] = [
+    { date: null, paid: true, charges: paidUndated },
+    { date: null, paid: false, charges: undated },
+    ...[...dated]
+      .sort(([a], [b]) => compareIsoDates(a, b))
+      .map(([date, charges]) => ({ date, paid: false, charges })),
   ];
   let cumulative = 0;
-  return groups.map(([date, charges]) => {
-    const amount = sum(charges.map((c) => c.amount));
-    cumulative += amount;
-    return { date, charges: charges.sort(byAmountDesc), amount, cumulative };
-  });
+  return groups
+    .filter((group) => group.charges.length > 0)
+    .map(({ date, paid, charges }) => {
+      const amount = sum(charges.map((c) => c.amount));
+      cumulative += amount;
+      return { date, paid, charges: charges.sort(byAmountDesc), amount, cumulative };
+    });
 }
 
 /** A dated charge day before `today` already passed; charges without a day never count as passed. */
@@ -440,9 +485,14 @@ export function chargeDayPassed(day: Pick<ChargeDay, 'date'>, today: IsoDate): b
   return day.date !== null && compareIsoDates(day.date, today) < 0;
 }
 
-/** What is still to be charged from `today` on (charges without a day included: they may come). */
+/**
+ * What is still to be charged from `today` on: neither passed nor marked as paid (charges without
+ * a day count until they are marked: they may still come).
+ */
 export function pendingCharges(days: readonly ChargeDay[], today: IsoDate): Cents {
-  return sum(days.filter((day) => !chargeDayPassed(day, today)).map((day) => day.amount));
+  return sum(
+    days.filter((day) => !day.paid && !chargeDayPassed(day, today)).map((day) => day.amount),
+  );
 }
 
 export interface MonthTotals {
@@ -525,10 +575,19 @@ export type BudgetIssueCode =
   | 'INVALID_REPEAT'
   | 'INVALID_FIRST_DATE'
   | 'INVALID_SKIP'
+  | 'INVALID_PAID'
   | 'INVALID_DUE_DAY'
   | 'END_BEFORE_START'
   | 'END_WITHOUT_RECURRING'
   | 'INVALID_LINK';
+
+/** At least one month, each valid, listed once and in order. */
+function isMonthList(months: readonly YearMonth[]): boolean {
+  return (
+    months.length > 0 &&
+    months.every((m, i) => isYearMonth(m) && (i === 0 || compareYearMonths(months[i - 1]!, m) < 0))
+  );
+}
 
 /** Checks an item before it is stored. The UI maps each code to a text in `src/i18n`. */
 export function validateBudgetItem(item: BudgetItemDraft): BudgetIssueCode[] {
@@ -555,11 +614,15 @@ export function validateBudgetItem(item: BudgetItemDraft): BudgetIssueCode[] {
     issues.push('INVALID_FIRST_DATE');
   }
   if (item.skippedMonths !== undefined) {
-    const { skippedMonths } = item;
-    const sortedUnique = skippedMonths.every(
-      (m, i) => isYearMonth(m) && (i === 0 || compareYearMonths(skippedMonths[i - 1]!, m) < 0),
-    );
-    if (!canSkip(item) || skippedMonths.length === 0 || !sortedUnique) issues.push('INVALID_SKIP');
+    if (!canSkip(item) || !isMonthList(item.skippedMonths)) issues.push('INVALID_SKIP');
+  }
+  if (item.paidMonths !== undefined) {
+    const { paidMonths, skippedMonths = [] } = item;
+    // Paid and "not paid this month" contradict each other in the same month.
+    const alsoSkipped = paidMonths.some((m) => skippedMonths.includes(m));
+    if (!canMarkPaid(item) || !isMonthList(paidMonths) || alsoSkipped) {
+      issues.push('INVALID_PAID');
+    }
   }
   if (item.dueDay !== undefined) {
     const { dueDay } = item;

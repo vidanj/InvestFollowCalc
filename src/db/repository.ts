@@ -1,10 +1,11 @@
 import {
+  canMarkPaid,
   canSkip,
   canSplitAt,
   endBefore,
   startingIn,
   validateBudgetItem,
-  withSkipped,
+  withMonth,
   type BudgetItemDraft,
 } from '../domain/budget';
 import { linkedBudgetItem } from '../domain/budgetLink';
@@ -427,20 +428,49 @@ export class Repository {
     });
   }
 
-  /** Marks a monthly or weekly expense as not paid in `month` (`skip`), or paid again. */
+  /**
+   * Marks a monthly or weekly expense as not paid in `month` (`skip`), or counted again. Skipping
+   * a month clears "already paid" in it.
+   */
   async setSkipped(id: string, month: YearMonth, skip: boolean): Promise<BudgetItemRecord> {
+    return this.markMonths(id, (current) => {
+      if (!canSkip(current)) throw new RepositoryError('INVALID_BUDGET_ITEM');
+      return {
+        skippedMonths: withMonth(current.skippedMonths, month, skip),
+        paidMonths: skip ? withMonth(current.paidMonths, month, false) : current.paidMonths,
+      };
+    });
+  }
+
+  /**
+   * Marks a monthly expense without a charge day as already paid in `month` (`paid`), or pending
+   * again. Paying a month clears "not paid this month" in it.
+   */
+  async setPaid(id: string, month: YearMonth, paid: boolean): Promise<BudgetItemRecord> {
+    return this.markMonths(id, (current) => {
+      if (!canMarkPaid(current)) throw new RepositoryError('INVALID_BUDGET_ITEM');
+      return {
+        paidMonths: withMonth(current.paidMonths, month, paid),
+        skippedMonths: paid
+          ? withMonth(current.skippedMonths, month, false)
+          : current.skippedMonths,
+      };
+    });
+  }
+
+  /** Stores the skipped and paid months `change` gives for one item. */
+  private async markMonths(
+    id: string,
+    change: (current: BudgetItemRecord) => Pick<BudgetItemRecord, 'skippedMonths' | 'paidMonths'>,
+  ): Promise<BudgetItemRecord> {
     return this.db.transaction('rw', this.db.budgetItems, this.db.meta, async () => {
       const current = await this.db.budgetItems.get(id);
       if (!current) throw new RepositoryError('BUDGET_ITEM_NOT_FOUND');
       assertNotLinked(current);
-      if (!canSkip(current)) throw new RepositoryError('INVALID_BUDGET_ITEM');
       const now = this.clock.now();
-      const record: BudgetItemRecord = {
-        ...current,
-        skippedMonths: withSkipped(current.skippedMonths, month, skip),
-        updatedAt: now,
-      };
+      const record: BudgetItemRecord = { ...current, ...change(current), updatedAt: now };
       if (record.skippedMonths === undefined) delete record.skippedMonths;
+      if (record.paidMonths === undefined) delete record.paidMonths;
       assertValidBudgetItem(record);
       await this.db.budgetItems.put(record);
       await this.touch(now);

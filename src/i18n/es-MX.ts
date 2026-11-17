@@ -144,6 +144,8 @@ const budgetIssueMessages: Record<BudgetIssueCode, string> = {
   INVALID_REPEAT: 'Elige cada cuándo se repite.',
   INVALID_FIRST_DATE: 'Escribe la fecha del primer cargo; debe caer en el mes inicial.',
   INVALID_SKIP: 'Solo los gastos que se repiten cada mes o cada semana se pueden omitir en un mes.',
+  INVALID_PAID:
+    'Solo un gasto que se repite cada mes y no tiene día del cargo se marca como ya pagado, y no en un mes que no lo pagas.',
   INVALID_DUE_DAY:
     'El día del cargo va del 1 al 31 y solo aplica a gastos que se repiten cada mes o cada año.',
   END_WITHOUT_RECURRING: 'Solo un concepto que se repite puede tener mes final.',
@@ -340,9 +342,10 @@ export const strings = {
     noDueDay: 'Sin día fijo',
     chargeDay: (date: IsoDate) => `Día ${Number(date.slice(8))}`,
     chargeDayPassed: 'ya pasó',
+    chargeDayPaid: 'ya pagado',
     pendingFromToday: (amount: string) => `Falta por cobrarse de hoy a fin de mes: ${amount}.`,
     noDueDayNote:
-      'Los gastos sin día fijo se cuentan desde el día 1. Edítalos para ponerles el día del cargo.',
+      'Los gastos sin día fijo se cuentan desde el día 1 y siguen pendientes hasta que marques "Ya lo pagué" en la lista. También puedes editarlos para ponerles el día del cargo.',
     meterLabel: 'Parte de tus ingresos que ya se va en gastos',
     meterValue: (percent: string) => `Gastas el ${percent} de lo que ganas`,
     meterOver: (percent: string) => `Gastas el ${percent} de lo que ganas: más de lo que entra`,
@@ -361,6 +364,8 @@ export const strings = {
     skipLabel: 'No lo pago este mes',
     skipAria: (name: string, month: string) => `No pagar ${name} en ${month}`,
     skippedDetail: (amount: string) => `Omitido este mes: no cuentan ${amount}`,
+    paidLabel: 'Ya lo pagué',
+    paidAria: (name: string, month: string) => `Ya pagué ${name} en ${month}`,
     paymentNumbers: (numbers: number[], total: number) =>
       numbers.length === 1
         ? `Pago ${numbers[0]} de ${total}`

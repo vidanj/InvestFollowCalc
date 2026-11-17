@@ -19,7 +19,9 @@ import {
   pendingCharges,
   summarizeMonth,
   summarizeYear,
+  canMarkPaid,
   canSkip,
+  isPaidIn,
   type BudgetData,
   type ChargeDay,
   type ExpenseItem,
@@ -101,7 +103,9 @@ function entryDetail({ item, times }: MonthEntry): string {
   return item.kind === 'expense' ? `${t.categories[item.category]} · ${when}` : when;
 }
 
-interface SkipToggle {
+/** A per-month checkbox of an expense: "not paid this month" or "already paid". */
+interface MonthMark {
+  label: string;
   checked: boolean;
   ariaLabel: string;
   onChange: (checked: boolean) => void;
@@ -112,12 +116,13 @@ interface EntryRowProps {
   name: string;
   detail: string;
   amount: string;
-  /** Monthly and weekly expenses: "not paid this month" checkbox, outside the link. */
-  skip?: SkipToggle;
+  /** Skipped this month: dimmed, amount struck through. */
+  skipped?: boolean;
+  /** Checkboxes for this month, side by side below the row, outside the link. */
+  marks?: MonthMark[];
 }
 
-function EntryRow({ to, name, detail, amount, skip }: EntryRowProps) {
-  const skipped = skip?.checked ?? false;
+function EntryRow({ to, name, detail, amount, skipped = false, marks = [] }: EntryRowProps) {
   return (
     <li>
       <Link
@@ -138,19 +143,26 @@ function EntryRow({ to, name, detail, amount, skip }: EntryRowProps) {
           {amount}
         </span>
       </Link>
-      {skip && (
-        <label className="-mt-1 flex w-fit cursor-pointer items-center gap-2 px-4 pt-1 pb-3 text-xs text-slate-600 dark:text-slate-400">
-          <input
-            type="checkbox"
-            checked={skip.checked}
-            aria-label={skip.ariaLabel}
-            onChange={(e) => {
-              skip.onChange(e.target.checked);
-            }}
-            className="h-4 w-4 accent-teal-700"
-          />
-          {t.skipLabel}
-        </label>
+      {marks.length > 0 && (
+        <div className="-mt-1 flex flex-wrap gap-x-5 gap-y-2 px-4 pt-1 pb-3">
+          {marks.map((mark) => (
+            <label
+              key={mark.label}
+              className="flex w-fit cursor-pointer items-center gap-2 text-xs text-slate-600 dark:text-slate-400"
+            >
+              <input
+                type="checkbox"
+                checked={mark.checked}
+                aria-label={mark.ariaLabel}
+                onChange={(e) => {
+                  mark.onChange(e.target.checked);
+                }}
+                className="h-4 w-4 accent-teal-700"
+              />
+              {mark.label}
+            </label>
+          ))}
+        </div>
       )}
     </li>
   );
@@ -238,18 +250,24 @@ function ChargeDaysTable({ days, money, today }: ChargeDaysTableProps) {
         <tbody>
           {days.map((day) => {
             const passed = today !== null && chargeDayPassed(day, today);
+            const done = passed || day.paid;
             return (
               <tr
-                key={day.date ?? 'undated'}
-                className={`border-t border-slate-100 dark:border-slate-800 ${passed ? 'text-slate-500 dark:text-slate-400' : ''}`}
+                key={day.date ?? (day.paid ? 'undated-paid' : 'undated')}
+                className={`border-t border-slate-100 dark:border-slate-800 ${done ? 'text-slate-500 dark:text-slate-400' : ''}`}
               >
                 <th scope="row" className="px-3 py-2 text-left align-top font-normal">
                   <span className="block font-medium">
                     {day.date === null ? t.noDueDay : t.chargeDay(day.date)}
-                    {passed && <span className="text-xs font-normal"> · {t.chargeDayPassed}</span>}
+                    {done && (
+                      <span className="text-xs font-normal">
+                        {' '}
+                        · {day.paid ? t.chargeDayPaid : t.chargeDayPassed}
+                      </span>
+                    )}
                   </span>
                   <span
-                    className={`block text-xs ${passed ? '' : 'text-slate-600 dark:text-slate-400'}`}
+                    className={`block text-xs ${done ? '' : 'text-slate-600 dark:text-slate-400'}`}
                   >
                     {day.charges.map((c) => c.name).join(', ')}
                   </span>
@@ -332,16 +350,33 @@ function CurrencyBudget({
     ...summary.expenseItems.map((entry) => ({ entry, skipped: false })),
     ...summary.skippedItems.map((entry) => ({ entry, skipped: true })),
   ].sort((a, b) => b.entry.amount - a.entry.amount);
-  const skipToggle = (item: ExpenseItem, checked: boolean): SkipToggle | undefined =>
-    canSkip(item)
-      ? {
-          checked,
-          ariaLabel: t.skipAria(item.name, formatMonth(month)),
-          onChange: (skip) => {
-            void repository.setSkipped(item.id, month, skip);
+  // "Not paid this month" and "already paid" exclude each other: checking one clears the other.
+  const monthMarks = (item: ExpenseItem, skipped: boolean): MonthMark[] => [
+    ...(canSkip(item)
+      ? [
+          {
+            label: t.skipLabel,
+            checked: skipped,
+            ariaLabel: t.skipAria(item.name, formatMonth(month)),
+            onChange: (skip: boolean) => {
+              void repository.setSkipped(item.id, month, skip);
+            },
           },
-        }
-      : undefined;
+        ]
+      : []),
+    ...(canMarkPaid(item)
+      ? [
+          {
+            label: t.paidLabel,
+            checked: isPaidIn(item, month),
+            ariaLabel: t.paidAria(item.name, formatMonth(month)),
+            onChange: (paid: boolean) => {
+              void repository.setPaid(item.id, month, paid);
+            },
+          },
+        ]
+      : []),
+  ];
 
   return (
     <section className="flex flex-col gap-4" aria-labelledby={`budget-${currency}`}>
@@ -375,7 +410,8 @@ function CurrencyBudget({
               skipped ? t.skippedDetail(formatMoney(entry.amount, currency)) : entryDetail(entry)
             }
             amount={formatMoney(entry.amount, currency)}
-            skip={skipToggle(entry.item, skipped)}
+            skipped={skipped}
+            marks={monthMarks(entry.item, skipped)}
           />
         ))}
       </EntryList>

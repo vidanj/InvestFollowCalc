@@ -33,6 +33,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); v
   sus fechas). En el mes actual se marcan los días que ya pasaron y lo que falta por cobrarse.
 - **"No lo pago este mes"**: un gasto mensual o semanal (por ejemplo, una suscripción) se puede
   omitir un mes; ese mes no cuenta y al siguiente vuelve solo.
+- **"Ya lo pagué"**: un gasto mensual sin día del cargo (que pagas en días distintos cada mes) se
+  marca como pagado en la lista del mes; sigue contando en tus gastos, pero ya no en lo que falta
+  por cobrarse, y en la tabla por día aparece como "ya pagado". Se excluye con "No lo pago este mes".
 - **Tu año**: ingresos, gastos y lo que quedará al cierre, registrado y proyectado.
 - **Inversión sugerida** (porcentaje de los ingresos, sin pasar de lo que queda) con proyección a
   1, 3, 5 y 10 años usando el rendimiento real del portafolio, de una cuenta o una tasa escrita.

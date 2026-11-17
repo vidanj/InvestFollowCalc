@@ -270,6 +270,29 @@ describe('createBackup / readBackup', () => {
     expect(contents.events).toEqual(events);
   });
 
+  it('carries the months an expense without a charge day was marked as paid', async () => {
+    const gym: BudgetItemRecord = {
+      id: 'b5',
+      kind: 'expense',
+      name: 'Gimnasio',
+      amount: 50_000,
+      currency: 'MXN',
+      category: 'health',
+      month: '2026-10',
+      repeat: 'monthly',
+      skippedMonths: ['2026-11'],
+      paidMonths: ['2026-10', '2026-12'],
+      ...stamp,
+    };
+    const { text } = await createBackup(
+      { ...data, budgetItems: [...budgetItems, gym] },
+      PASSWORD,
+      FAST,
+    );
+    const contents = await readBackup(text, PASSWORD);
+    expect(contents.budgetItems.at(-1)).toEqual(gym);
+  });
+
   it('keeps the link between a movement and its budget item', async () => {
     const { text } = await createBackup(data, PASSWORD, FAST);
     const contents = await readBackup(text, PASSWORD);
@@ -309,6 +332,13 @@ describe('createBackup / readBackup', () => {
       { ...validPayload(), budgetItems: [{ ...budgetItems[1], repeat: 'daily' }] },
       { ...validPayload(), budgetItems: [{ ...budgetItems[0], skippedMonths: ['2026-11'] }] }, // income
       { ...validPayload(), budgetItems: [{ ...budgetItems[1], skippedMonths: ['2026-1'] }] },
+      { ...validPayload(), budgetItems: [{ ...budgetItems[0], paidMonths: ['2026-11'] }] }, // income
+      { ...validPayload(), budgetItems: [{ ...budgetItems[1], paidMonths: ['2026-11'] }] }, // has a day
+      // Paid in a month it was skipped.
+      {
+        ...validPayload(),
+        budgetItems: [{ ...budgetItems[1], dueDay: undefined, paidMonths: ['2026-12'] }],
+      },
       { ...validPayload(), budgetItems: [{ ...budgetItems[1], repeat: 'weekly' }] }, // no first date
       { ...validPayload(), budgetItems: [{ ...budgetItems[1], dueDay: 32 }] },
       { ...validPayload(), budgetItems: [{ ...budgetItems[1], dueDay: '5' }] },

@@ -139,6 +139,7 @@ describe('movements taken from the budget', () => {
     await expectRepositoryError(repo.updateBudgetItem(id, { ...draft, amount: 1 }), 'LINKED_ITEM');
     await expectRepositoryError(repo.deleteBudgetItem(id), 'LINKED_ITEM');
     await expectRepositoryError(repo.setSkipped(id, '2026-10', true), 'LINKED_ITEM');
+    await expectRepositoryError(repo.setPaid(id, '2026-10', true), 'LINKED_ITEM');
     await expectRepositoryError(repo.addBudgetItem(draft), 'LINKED_ITEM');
     expect(await repo.listBudgetItems()).toEqual([item]);
   });

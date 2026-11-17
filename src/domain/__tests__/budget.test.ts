@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canHaveDueDay,
+  canMarkPaid,
   canSplitAt,
   chargeDayPassed,
   creditMonthPayments,
@@ -8,6 +9,7 @@ import {
   firstBudgetMonth,
   fixedChargeDays,
   isActiveIn,
+  isPaidIn,
   monthlyTotals,
   isSkippedIn,
   occurrencesIn,
@@ -17,7 +19,7 @@ import {
   summarizeMonth,
   summarizeYear,
   validateBudgetItem,
-  withSkipped,
+  withMonth,
   type BudgetData,
   type BudgetItem,
   type ExpenseItem,
@@ -224,10 +226,10 @@ describe('skipping a month', () => {
   });
 
   it('adds and removes skipped months, kept sorted', () => {
-    expect(withSkipped(undefined, '2026-10', true)).toEqual(['2026-10']);
-    expect(withSkipped(['2026-11'], '2026-10', true)).toEqual(['2026-10', '2026-11']);
-    expect(withSkipped(['2026-10', '2026-11'], '2026-10', true)).toEqual(['2026-10', '2026-11']);
-    expect(withSkipped(['2026-10'], '2026-10', false)).toBeUndefined();
+    expect(withMonth(undefined, '2026-10', true)).toEqual(['2026-10']);
+    expect(withMonth(['2026-11'], '2026-10', true)).toEqual(['2026-10', '2026-11']);
+    expect(withMonth(['2026-10', '2026-11'], '2026-10', true)).toEqual(['2026-10', '2026-11']);
+    expect(withMonth(['2026-10'], '2026-10', false)).toBeUndefined();
   });
 
   it('splits the skipped months when changed from a month on', () => {
@@ -236,6 +238,45 @@ describe('skipping a month', () => {
     expect(startingIn(paused, '2026-10').skippedMonths).toEqual(['2026-10', '2027-01']);
     expect(endBefore({ ...paused, skippedMonths: ['2027-01'] }, '2026-10')).not.toHaveProperty(
       'skippedMonths',
+    );
+  });
+});
+
+describe('marking a month as paid', () => {
+  const gym = expense('Gimnasio', 500, 'health', { paidMonths: ['2026-11'] });
+
+  it('applies only to monthly expenses without a charge day', () => {
+    expect(isPaidIn(gym, '2026-11')).toBe(true);
+    expect(isPaidIn(gym, '2026-12')).toBe(false);
+    expect(canMarkPaid(gym)).toBe(true);
+    expect(canMarkPaid({ ...gym, dueDay: 5 })).toBe(false);
+    expect(canMarkPaid({ ...gym, repeat: 'weekly' })).toBe(false);
+    expect(canMarkPaid({ ...gym, repeat: 'yearly' })).toBe(false);
+    expect(canMarkPaid({ ...gym, repeat: 'none' })).toBe(false);
+    expect(canMarkPaid(income('Sueldo', 1))).toBe(false);
+    expect(isPaidIn({ ...gym, dueDay: 5 }, '2026-11')).toBe(false);
+  });
+
+  it('still counts in every total: it was spent', () => {
+    const [mxn] = summarizeMonth(
+      { items: [items[0]!, items[2]!, gym], creditPayments: [] },
+      '2026-11',
+    );
+    expect(mxn).toMatchObject({
+      expenses: cents(8_500),
+      fixedCharges: cents(8_500),
+      left: cents(21_500),
+    });
+    expect(mxn?.expenseItems.map((e) => e.item.id)).toEqual(['Renta', 'Gimnasio']);
+    expect(mxn?.skippedItems).toEqual([]);
+  });
+
+  it('splits the paid months when changed from a month on', () => {
+    const paid = { ...gym, paidMonths: ['2026-05', '2026-10', '2027-01'] };
+    expect(endBefore(paid, '2026-10').paidMonths).toEqual(['2026-05']);
+    expect(startingIn(paid, '2026-10').paidMonths).toEqual(['2026-10', '2027-01']);
+    expect(startingIn({ ...paid, paidMonths: ['2026-05'] }, '2026-10')).not.toHaveProperty(
+      'paidMonths',
     );
   });
 });
@@ -355,6 +396,35 @@ describe('fixed charges by day', () => {
     expect(chargeDayPassed(days[0]!, '2026-12-01')).toBe(false);
     expect(chargeDayPassed(days[1]!, '2026-11-01')).toBe(false);
     expect(chargeDayPassed(days[1]!, '2026-11-02')).toBe(true);
+  });
+
+  it('lists the charges without a day marked as paid first, and they are no longer pending', () => {
+    const paid = november.map((item) =>
+      item.id === 'Gimnasio' ? { ...item, paidMonths: ['2026-11'] } : item,
+    );
+    const water = expense('Agua', 300, 'services');
+    const [withPaid] = summarizeMonth({ ...novemberData, items: [...paid, water] }, '2026-11');
+    const paidDays = fixedChargeDays(withPaid!);
+    expect(
+      paidDays
+        .slice(0, 3)
+        .map((d) => [d.date, d.paid, d.charges.map((c) => c.name), d.amount, d.cumulative]),
+    ).toEqual([
+      [null, true, ['Gimnasio'], cents(500), cents(500)],
+      [null, false, ['Agua'], cents(300), cents(800)],
+      ['2026-11-01', false, ['Renta'], cents(8_000), cents(8_800)],
+    ]);
+    // Still part of the month's fixed charges, but no longer pending on any day.
+    expect(paidDays.at(-1)?.cumulative).toBe(withPaid?.fixedCharges);
+    expect(pendingCharges(paidDays, '2026-11-01')).toBe(cents(16_549 + 300 - 500));
+    expect(pendingCharges(paidDays, '2026-12-01')).toBe(cents(300));
+    // The next month it is pending again.
+    const [december] = summarizeMonth({ ...novemberData, items: paid }, '2026-12');
+    expect(fixedChargeDays(december!)[0]).toMatchObject({
+      date: null,
+      paid: false,
+      amount: cents(500),
+    });
   });
 });
 
@@ -505,6 +575,30 @@ describe('validateBudgetItem', () => {
     expect(validateBudgetItem({ ...draft, repeat: 'none', skippedMonths: ['2026-01'] })).toEqual([
       'INVALID_SKIP',
     ]);
+  });
+
+  it('accepts paid months only on monthly expenses without a charge day, never skipped', () => {
+    expect(validateBudgetItem({ ...draft, paidMonths: ['2026-03', '2026-05'] })).toEqual([]);
+    expect(
+      validateBudgetItem({ ...draft, skippedMonths: ['2026-04'], paidMonths: ['2026-03'] }),
+    ).toEqual([]);
+    for (const paidMonths of [[], ['2026-05', '2026-03'], ['2026-03', '2026-03'], ['2026-13']]) {
+      expect(validateBudgetItem({ ...draft, paidMonths }), String(paidMonths)).toEqual([
+        'INVALID_PAID',
+      ]);
+    }
+    const paidMonths = ['2026-03'];
+    const weekly = { ...draft, repeat: 'weekly' as const, firstDate: '2026-01-07' };
+    for (const item of [
+      { ...draft, dueDay: 5, paidMonths },
+      { ...draft, repeat: 'yearly' as const, paidMonths },
+      { ...draft, repeat: 'none' as const, paidMonths },
+      { ...weekly, paidMonths },
+      { ...draft, skippedMonths: ['2026-03'], paidMonths }, // the same month, skipped
+      income('Sueldo', 1, { paidMonths }),
+    ]) {
+      expect(validateBudgetItem(item), JSON.stringify(item)).toEqual(['INVALID_PAID']);
+    }
   });
 
   it('accepts a charge day only on monthly and yearly expenses, from 1 to 31', () => {

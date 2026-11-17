@@ -164,6 +164,63 @@ describe('skipping a month', () => {
   });
 });
 
+describe('marking a month as paid', () => {
+  it('marks a monthly expense without a day as paid that month, and pending again', async () => {
+    const item = await repo.addBudgetItem(rent);
+    expect((await repo.setPaid(item.id, '2026-11', true)).paidMonths).toEqual(['2026-11']);
+    expect((await repo.setPaid(item.id, '2026-10', true)).paidMonths).toEqual([
+      '2026-10',
+      '2026-11',
+    ]);
+    await repo.setPaid(item.id, '2026-10', false);
+    const back = await repo.setPaid(item.id, '2026-11', false);
+    expect(back).not.toHaveProperty('paidMonths');
+    expect(await repo.getMeta('lastDataChangeAt')).toBe(back.updatedAt);
+  });
+
+  it('clears "not paid this month" in that month, and the other way around', async () => {
+    const item = await repo.addBudgetItem({ ...rent, skippedMonths: ['2026-10', '2026-11'] });
+    const paid = await repo.setPaid(item.id, '2026-11', true);
+    expect(paid).toMatchObject({ skippedMonths: ['2026-10'], paidMonths: ['2026-11'] });
+    const skipped = await repo.setSkipped(item.id, '2026-11', true);
+    expect(skipped.skippedMonths).toEqual(['2026-10', '2026-11']);
+    expect(skipped).not.toHaveProperty('paidMonths');
+    // Unchecking either one leaves the other month marks alone.
+    await repo.setPaid(item.id, '2026-12', true);
+    const unskipped = await repo.setSkipped(item.id, '2026-11', false);
+    expect(unskipped).toMatchObject({ skippedMonths: ['2026-10'], paidMonths: ['2026-12'] });
+  });
+
+  it('only for monthly expenses without a charge day', async () => {
+    const withDay = await repo.addBudgetItem({ ...rent, dueDay: 5 });
+    const weekly = await repo.addBudgetItem({
+      ...rent,
+      repeat: 'weekly',
+      month: '2026-10',
+      firstDate: '2026-10-02',
+    });
+    for (const { id } of [withDay, weekly]) {
+      await expectRepositoryError(repo.setPaid(id, '2026-10', true), 'INVALID_BUDGET_ITEM');
+    }
+    await expectRepositoryError(repo.setPaid('nope', '2026-10', true), 'BUDGET_ITEM_NOT_FOUND');
+  });
+
+  it('a change from a month on splits the paid months; a charge day drops them', async () => {
+    const item = await repo.addBudgetItem({ ...rent, paidMonths: ['2026-05', '2026-12'] });
+    const next = await repo.updateBudgetItem(
+      item.id,
+      { ...rent, amount: 900_000, paidMonths: ['2026-05', '2026-12'] },
+      '2026-10',
+    );
+    expect(next.paidMonths).toEqual(['2026-12']);
+    expect((await repo.getBudgetItem(item.id))?.paidMonths).toEqual(['2026-05']);
+    await expectRepositoryError(
+      repo.updateBudgetItem(next.id, { ...rent, dueDay: 5, paidMonths: ['2026-12'] }),
+      'INVALID_BUDGET_ITEM',
+    );
+  });
+});
+
 describe('weekly items', () => {
   it('keep their weekday when changed from a later month on', async () => {
     const gas = await repo.addBudgetItem({

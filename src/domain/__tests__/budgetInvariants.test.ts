@@ -4,6 +4,8 @@ import {
   creditMonthPayments,
   EXPENSE_CATEGORIES,
   fixedChargeDays,
+  isActiveIn,
+  isPaidIn,
   occurrencesIn,
   pendingCharges,
   REPEATS,
@@ -146,40 +148,49 @@ const itemArb: fc.Arbitrary<BudgetItem> = fc
     repeat: fc.constantFrom(...REPEATS),
     length: fc.option(fc.integer({ min: 0, max: 24 }), { nil: null }),
     skips: fc.uniqueArray(fc.integer({ min: 0, max: 30 }), { maxLength: 4 }),
+    paid: fc.uniqueArray(fc.integer({ min: 0, max: 30 }), { maxLength: 4 }),
     dueDay: fc.option(fc.integer({ min: 1, max: 31 }), { nil: null }),
   })
-  .map(({ id, kind, amount, currency, category, start, day, repeat, length, skips, dueDay }) => {
-    const month = addMonthsToYearMonth('2026-01', start);
-    const base = {
-      id,
-      name: id,
-      amount,
-      currency,
-      month,
-      repeat,
-      ...(repeat === 'weekly' ? { firstDate: `${month}-${String(day).padStart(2, '0')}` } : {}),
-      ...(repeat !== 'none' && length !== null
-        ? { endMonth: addMonthsToYearMonth(month, length) }
-        : {}),
-    };
-    if (kind === 'income') return { ...base, kind };
-    // Monthly and yearly expenses may have a charge day.
-    const withDay =
-      (repeat === 'monthly' || repeat === 'yearly') && dueDay !== null ? { dueDay } : {};
-    // Monthly and weekly expenses may skip some months.
-    const skippedMonths = [...skips]
-      .sort((a, b) => a - b)
-      .map((offset) => addMonthsToYearMonth(month, offset));
-    return repeat === 'monthly' || repeat === 'weekly'
-      ? {
-          ...base,
-          ...withDay,
-          kind,
-          category,
-          ...(skippedMonths.length > 0 ? { skippedMonths } : {}),
-        }
-      : { ...base, ...withDay, kind, category };
-  });
+  .map(
+    ({ id, kind, amount, currency, category, start, day, repeat, length, skips, paid, dueDay }) => {
+      const month = addMonthsToYearMonth('2026-01', start);
+      const base = {
+        id,
+        name: id,
+        amount,
+        currency,
+        month,
+        repeat,
+        ...(repeat === 'weekly' ? { firstDate: `${month}-${String(day).padStart(2, '0')}` } : {}),
+        ...(repeat !== 'none' && length !== null
+          ? { endMonth: addMonthsToYearMonth(month, length) }
+          : {}),
+      };
+      if (kind === 'income') return { ...base, kind };
+      // Monthly and yearly expenses may have a charge day.
+      const withDay =
+        (repeat === 'monthly' || repeat === 'yearly') && dueDay !== null ? { dueDay } : {};
+      const monthsAt = (offsets: readonly number[]) =>
+        [...offsets].sort((a, b) => a - b).map((offset) => addMonthsToYearMonth(month, offset));
+      // Monthly and weekly expenses may skip some months.
+      const skippedMonths = monthsAt(skips);
+      // Monthly expenses without a charge day may be marked as paid, never in a skipped month.
+      const paidMonths =
+        repeat === 'monthly' && dueDay === null
+          ? monthsAt(paid.filter((offset) => !skips.includes(offset)))
+          : [];
+      return repeat === 'monthly' || repeat === 'weekly'
+        ? {
+            ...base,
+            ...withDay,
+            kind,
+            category,
+            ...(skippedMonths.length > 0 ? { skippedMonths } : {}),
+            ...(paidMonths.length > 0 ? { paidMonths } : {}),
+          }
+        : { ...base, ...withDay, kind, category };
+    },
+  );
 
 describe('budget invariants', () => {
   it('left = income − expenses; categories add up to expenses; nothing is mixed', () => {
@@ -216,6 +227,12 @@ describe('budget invariants', () => {
               expect(occurrencesIn(item, month)).toBe(0);
               expect(summary.expenseItems.some((e) => e.item.id === item.id)).toBe(false);
             }
+            // A paid item still counts: it was spent.
+            for (const item of items) {
+              if (item.currency !== summary.currency || !isPaidIn(item, month)) continue;
+              if (!isActiveIn(item, month)) continue;
+              expect(summary.expenseItems.some((e) => e.item.id === item.id)).toBe(true);
+            }
           }
         },
       ),
@@ -237,18 +254,30 @@ describe('budget invariants', () => {
           for (const summary of summarizeMonth(data, month)) {
             const days = fixedChargeDays(summary);
             expect(days.at(-1)?.cumulative ?? 0).toBe(summary.fixedCharges);
-            expect(pendingCharges(days, `${month}-01`)).toBe(summary.fixedCharges);
+            // Marked as paid: still in the fixed charges, but no longer pending.
+            const paid = days.filter((d) => d.paid).reduce((s, d) => s + d.amount, 0);
+            const paidItems = summary.expenseItems.filter((e) => isPaidIn(e.item, month));
+            expect(paid).toBe(paidItems.reduce((s, e) => s + e.amount, 0));
+            expect(pendingCharges(days, `${month}-01`)).toBe(summary.fixedCharges - paid);
             let previous = 0;
             days.forEach((day, i) => {
               expect(day.amount).toBe(day.charges.reduce((s, c) => s + c.amount, 0));
               expect(day.cumulative).toBe(previous + day.amount);
               previous = day.cumulative;
-              // Undated charges first, then each date of the month once, in order.
-              if (day.date !== null) expect(toYearMonth(day.date)).toBe(month);
-              const before = days[i - 1]?.date;
+              // Only charges without a day can be marked as paid.
+              if (day.date !== null) {
+                expect(toYearMonth(day.date)).toBe(month);
+                expect(day.paid).toBe(false);
+              }
+              // Undated charges first (the paid ones before the rest), then each date of the
+              // month once, in order.
+              const before = days[i - 1];
               if (before === undefined) return;
-              expect(day.date).not.toBeNull();
-              if (before !== null) expect(compareIsoDates(before, day.date!)).toBe(-1);
+              if (day.date === null) {
+                expect([before.date, before.paid, day.paid]).toEqual([null, true, false]);
+              } else if (before.date !== null) {
+                expect(compareIsoDates(before.date, day.date)).toBe(-1);
+              }
             });
           }
         },

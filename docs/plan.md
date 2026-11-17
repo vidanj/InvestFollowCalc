@@ -302,6 +302,14 @@ Se reportaron al usuario al cerrar cada fase; cualquiera puede revertirse si no 
     fijos (sin gráfica nueva); en el mes actual se atenúan los días que ya pasaron ("ya pasó") y se
     muestra lo que falta por cobrarse (los sin día cuentan como pendientes). Campo opcional y
     aditivo: no cambia índices de Dexie ni `SCHEMA_VERSION`.
+  - **"Ya lo pagué"** (pedido después, decidido con el usuario el 2026-11-17): casilla junto a "No
+    lo pago este mes", sólo en gastos **mensuales sin día del cargo** (los que se pagan en días
+    distintos cada mes), en cualquier mes; guarda el mes en `paidMonths`. Sigue contando en gastos,
+    te queda y cargos fijos (sí se gastó); sólo deja de contar en "falta por cobrarse" y en la tabla
+    por día va en su propia fila "Sin día fijo · ya pagado", antes de los demás sin día. Las dos
+    casillas se excluyen: marcar una desmarca la otra (un mes nunca está en ambas listas). Ponerle
+    día del cargo o cambiar la repetición descarta los meses pagados. Campo opcional y aditivo: no
+    cambia índices de Dexie ni `SCHEMA_VERSION`.
   - **Retiros mayores al saldo** (decidido por el usuario el 2026-10-25: rechazarlos): un retiro sin
     saldo después no puede exceder el saldo conocido. Se valida al escribir (registrar, editar,
     borrar) y sólo bloquea violaciones nuevas; los datos y respaldos anteriores se siguen leyendo. El

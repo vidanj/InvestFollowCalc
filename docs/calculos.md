@@ -148,6 +148,13 @@ El código está en [src/domain/budget.ts](../src/domain/budget.ts).
   suscripción que pausas un mes): ese mes cuenta 0 (en los semanales, ninguno de sus cargos del mes)
   y al mes siguiente vuelve a contar solo. Sigue apareciendo en la lista para poder desmarcarlo. No
   aplica a gastos anuales, de una sola vez ni a ingresos.
+- Un gasto **mensual sin día del cargo** (por ejemplo, uno que pagas en días distintos cada mes) se
+  puede marcar como **"Ya lo pagué"** en la lista del mes. **No cambia ningún total**: sigue contando
+  en los gastos, en lo que te queda y en los cargos fijos, porque sí se gastó. Sólo deja de estar
+  pendiente (ver "Cargos fijos por día") y al mes siguiente vuelve a estar pendiente solo. "Ya lo
+  pagué" y "No lo pago este mes" se excluyen: marcar una desmarca la otra en ese mes. No aplica a
+  gastos con día del cargo (ese día pasa solo), semanales, anuales, de una sola vez ni a ingresos;
+  si le pones día del cargo o cambias su repetición, se descartan los meses marcados como pagados.
 - Cambiar un concepto que se repite "desde este mes" no toca los meses anteriores: el concepto
   original termina el mes anterior y la versión nueva empieza en el mes que se está viendo (uno
   semanal conserva su día de la semana). Lo mismo al "dejar de repetir desde este mes".
@@ -199,21 +206,29 @@ ten antes del día D = suma de los cargos fijos del día 1 al día D (incluido)
 - Cada gasto que se repite cuenta en su día: los semanales en cada una de sus fechas del mes, los
   mensuales y anuales en su día del cargo, y cada pago de crédito en su fecha (uno quincenal, en
   sus dos días).
-- Los gastos **sin día fijo** van primero y se cuentan desde el día 1, para no quedarse cortos.
+- Los gastos **sin día fijo** van primero y se cuentan desde el día 1, para no quedarse cortos. Los
+  que marcaste como **"Ya lo pagué"** ese mes van en su propia fila ("Sin día fijo · ya pagado"),
+  antes que los demás sin día; siguen sumando en el acumulado.
 - No se restan los ingresos que lleguen durante el mes: es lo que necesitas tener ya en la cuenta.
 - El último acumulado es igual a los **cargos fijos** del mes.
 - En el mes actual, los días anteriores a hoy se marcan como "ya pasó" y se muestra lo que **falta
-  por cobrarse** de hoy a fin de mes: los cargos de hoy en adelante más los que no tienen día (no se
-  sabe si ya se cobraron).
+  por cobrarse** de hoy a fin de mes: los cargos de hoy en adelante más los que no tienen día y no
+  marcaste como pagados (no se sabe si ya se cobraron):
+
+  ```
+  falta por cobrarse = cargos con día ≥ hoy + cargos sin día − cargos sin día marcados como pagados
+  ```
 
 Ejemplo (noviembre de 2026): gimnasio 500 sin día, renta 8,000 el día 1, crédito 1,000 el día 20 e
 internet 600 el día 31 → sin día: 500; día 1: 8,500; día 20: 9,500; día 30: 10,100. El 15 de
-noviembre falta por cobrarse 500 + 1,000 + 600 = 2,100.
+noviembre falta por cobrarse 500 + 1,000 + 600 = 2,100. Si ese día marcas el gimnasio como "Ya lo
+pagué", falta 1,000 + 600 = 1,600; los cargos fijos siguen siendo 10,100.
 
 Las pruebas verifican con cientos de presupuestos aleatorios que **te queda = ingresos − gastos**,
 que **la suma de las categorías = gastos**, que **cargos fijos = gastos − gastos de una sola vez**,
-que **el último acumulado por día = cargos fijos** (y nunca baja de un día al siguiente) y que un
-concepto semanal cae **52 o 53 veces** en cualquier periodo de 12 meses.
+que **el último acumulado por día = cargos fijos** (y nunca baja de un día al siguiente), que **lo
+pendiente desde el día 1 = cargos fijos − lo marcado como pagado** (un gasto pagado sigue contando
+en los gastos) y que un concepto semanal cae **52 o 53 veces** en cualquier periodo de 12 meses.
 
 ## Tu año
 

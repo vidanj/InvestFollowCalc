@@ -53,6 +53,9 @@ muestra:
   pones el día en que se cobran.
 - **"No lo pago este mes":** si un mes decides no pagar una suscripción u otro gasto mensual o
   semanal, márcalo en la lista; ese mes no cuenta y el siguiente vuelve a contar.
+- **"Ya lo pagué":** si un gasto mensual no tiene día fijo porque lo pagas en días distintos,
+  márcalo en la lista cuando lo pagues; sigue contando en tus gastos, pero deja de aparecer en lo que
+  falta por cobrarse ese mes.
 - **Aportaciones desde el presupuesto:** al registrar una aportación (o un retiro) en tu
   portafolio, marca "Sale de mi presupuesto del mes" y se agrega sola como gasto de _Inversión_ (o
   como ingreso), sin capturarla dos veces. Se actualiza o elimina junto con el movimiento.

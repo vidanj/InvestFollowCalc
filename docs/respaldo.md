@@ -123,7 +123,9 @@ Al descifrar, `data` contiene:
 Los montos están en **centavos**; la tasa, en puntos base (27.5% = 2750). Los ingresos no llevan
 `category`. `repeat` es `none`, `weekly`, `monthly` o `yearly`; los semanales llevan además
 `firstDate` (fecha del primer cargo); los gastos mensuales o semanales pueden llevar
-`skippedMonths` (meses que no se pagaron, ordenados); los gastos mensuales o anuales pueden llevar
+`skippedMonths` (meses que no se pagaron, ordenados); los gastos mensuales sin `dueDay` pueden
+llevar `paidMonths` (meses marcados como "Ya lo pagué", ordenados, nunca un mes que también esté en
+`skippedMonths`; campo opcional que no cambia `schemaVersion`); los gastos mensuales o anuales pueden llevar
 `dueDay` (día del cargo, 1 a 31; campo opcional que no cambia `schemaVersion`) y `endMonth` sólo
 aparece en conceptos que se repiten y tienen mes final. `sourceEventId` (opcional) aparece en un
 concepto creado desde una aportación (gasto de categoría `investment`) o un retiro (ingreso) del

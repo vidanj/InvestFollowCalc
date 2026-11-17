@@ -181,6 +181,35 @@ describe('budget item form', () => {
     expect(income.ok && income.draft).not.toHaveProperty('skippedMonths');
   });
 
+  it('carries paid months through an edit, and drops them when they no longer apply', () => {
+    const gym = {
+      id: 'g',
+      kind: 'expense' as const,
+      name: 'Gimnasio',
+      amount: 50_000,
+      currency: 'MXN' as const,
+      category: 'health' as const,
+      month: '2026-01',
+      repeat: 'monthly' as const,
+      paidMonths: ['2026-10'],
+    };
+    const values = valuesFromItem(gym);
+    expect(emptyBudgetItemValues('expense', '2026-10', TODAY).paidMonths).toEqual([]);
+    const kept = parseBudgetItemForm(values);
+    expect(kept.ok && kept.draft.paidMonths).toEqual(['2026-10']);
+    // A charge day, another repeat or turning it into income: it can no longer be marked.
+    for (const changed of [
+      { ...values, dueDay: '5' },
+      { ...values, repeat: 'yearly' as const },
+      { ...values, repeat: 'weekly' as const, firstDate: '2026-01-07' },
+      { ...values, kind: 'income' as const },
+    ]) {
+      const parsed = parseBudgetItemForm(changed);
+      expect(parsed.ok, JSON.stringify(changed)).toBe(true);
+      expect(parsed.ok && parsed.draft).not.toHaveProperty('paidMonths');
+    }
+  });
+
   it('takes an optional charge day for monthly and yearly expenses', () => {
     const values = {
       ...emptyBudgetItemValues('expense', '2026-10', TODAY),

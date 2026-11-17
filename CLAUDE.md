@@ -48,7 +48,9 @@ Plan completo y fases: [docs/plan.md](docs/plan.md).
 - Interés de créditos: tasa anual / 360 × (365 / pagos por año, a 4 decimales), redondeado al
   centavo por periodo; IVA 16% aparte del pago fijo. Detalle en `docs/calculos.md`.
 - Repeticiones: semanal = cargos reales del mes cada 7 días desde `firstDate`; anual = completo en su
-  mes; `skippedMonths` (sólo gastos mensuales/semanales) hace que ese mes cuente 0. Cargos fijos =
+  mes; `skippedMonths` (sólo gastos mensuales/semanales) hace que ese mes cuente 0; `paidMonths`
+  ("Ya lo pagué", sólo gastos mensuales sin `dueDay`, nunca el mismo mes que `skippedMonths`) no
+  cambia ningún total, sólo saca el cargo de lo pendiente (`pendingCharges`). Cargos fijos =
   gastos que se repiten (no omitidos) + créditos. Cargos fijos por día (`fixedChargeDays`): acumulado
   desde el día 1, sin día ⇒ cuenta el día 1, `dueDay` (sólo gastos mensuales/anuales) mayor al mes ⇒
   último día; el último acumulado = cargos fijos. Inversión sugerida = % de ingresos topado en

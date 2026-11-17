@@ -434,6 +434,74 @@ describe('repeats, fixed charges and the year', () => {
     }
   });
 
+  it('marks an expense without a day as paid: still spent, no longer pending', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 15, 12)); // November 15, 2026
+    try {
+      const repository = createTestRepository();
+      const expense = {
+        kind: 'expense' as const,
+        currency: 'MXN' as const,
+        category: 'health' as const,
+        month: '2026-08',
+        repeat: 'monthly' as const,
+      };
+      await repository.addBudgetItem({ ...expense, name: 'Renta', amount: 800_000, dueDay: 1 });
+      const gym = await repository.addBudgetItem({ ...expense, name: 'Gimnasio', amount: 50_000 });
+      await repository.addBudgetItem({ ...expense, name: 'Agua', amount: 30_000 });
+      const { user } = renderRoute('/budget?month=2026-11', repository);
+      const november = formatMonth('2026-11');
+      const paidBox = (name: string) =>
+        screen.queryByRole('checkbox', { name: b.paidAria(name, november) });
+      const skipBox = (name: string) =>
+        screen.getByRole('checkbox', { name: b.skipAria(name, november) });
+
+      // Both charges without a day may still come.
+      expect(await screen.findByText(b.pendingFromToday('$800.00'))).toBeVisible();
+      // A charge with its day passes on its own: no "already paid" there.
+      expect(paidBox('Renta')).toBeNull();
+      expect(skipBox('Renta')).toBeVisible();
+      await user.click(paidBox('Gimnasio')!);
+
+      expect(await screen.findByText(b.pendingFromToday('$300.00'))).toBeVisible();
+      expect(paidBox('Gimnasio')).toBeChecked();
+      const table = screen.getByRole('table', { name: b.fixedDaysCaption });
+      const rows = within(table)
+        .getAllByRole('row')
+        .slice(1)
+        .map((row) => [...row.children].map((cell) => cell.textContent));
+      expect(rows).toEqual([
+        [`${b.noDueDay} · ${b.chargeDayPaid}Gimnasio`, '$500.00', '$500.00'],
+        [`${b.noDueDay}Agua`, '$300.00', '$800.00'],
+        [`${b.chargeDay('2026-11-01')} · ${b.chargeDayPassed}Renta`, '$8,000.00', '$8,800.00'],
+      ]);
+      // It was spent: the month's expenses stay the same.
+      expect(within(stat(b.expenses)).getByText('$8,800.00')).toBeVisible();
+      expect((await repository.getBudgetItem(gym.id))?.paidMonths).toEqual(['2026-11']);
+
+      // "Not paid this month" and "already paid" exclude each other.
+      await user.click(skipBox('Gimnasio'));
+      expect(await within(stat(b.expenses)).findByText('$8,300.00')).toBeVisible();
+      expect(skipBox('Gimnasio')).toBeChecked();
+      expect(paidBox('Gimnasio')).not.toBeChecked();
+      await user.click(paidBox('Gimnasio')!);
+      expect(await within(stat(b.expenses)).findByText('$8,800.00')).toBeVisible();
+      expect(skipBox('Gimnasio')).not.toBeChecked();
+      expect(paidBox('Gimnasio')).toBeChecked();
+      expect(await repository.getBudgetItem(gym.id)).not.toHaveProperty('skippedMonths');
+
+      // The next month it is pending again.
+      await user.click(screen.getByRole('link', { name: b.nextMonth }));
+      const december = formatMonth('2026-12');
+      await screen.findByRole('heading', { name: december });
+      expect(
+        screen.getByRole('checkbox', { name: b.paidAria('Gimnasio', december) }),
+      ).not.toBeChecked();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('shows what will be left when the year ends', async () => {
     const repository = createTestRepository();
     await seedBudget(repository);

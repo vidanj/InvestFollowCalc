@@ -1,6 +1,7 @@
 import {
   BUDGET_NAME_MAX_LENGTH,
   canHaveDueDay,
+  canMarkPaid,
   canSkip,
   MAX_DUE_DAY,
   startingIn,
@@ -35,6 +36,8 @@ export interface BudgetItemFormValues {
   dueDay: string;
   /** Months marked as skipped from the month list; not edited here, only carried along. */
   skippedMonths: YearMonth[];
+  /** Months marked as already paid from the month list; not edited here, only carried along. */
+  paidMonths: YearMonth[];
 }
 
 export interface BudgetItemFormErrors {
@@ -70,6 +73,7 @@ export function emptyBudgetItemValues(
     endMonth: month,
     dueDay: '',
     skippedMonths: [],
+    paidMonths: [],
   };
 }
 
@@ -95,6 +99,7 @@ export function valuesFromItem(item: BudgetItem): BudgetItemFormValues {
     endMonth: item.endMonth ?? item.month,
     dueDay: item.dueDay === undefined ? '' : String(item.dueDay),
     skippedMonths: item.skippedMonths ?? [],
+    paidMonths: item.paidMonths ?? [],
   };
 }
 
@@ -135,6 +140,12 @@ export function parseBudgetItemForm(
   const dueDay = canHaveDueDay(values) ? parseDueDay(values.dueDay) : undefined;
   if (dueDay === null) errors.dueDay = strings.errors.invalidDueDay;
   if (Object.keys(errors).length > 0 || amount === null) return { ok: false, errors };
+  // Kept only while the item can still be marked as paid (monthly expenses without a day).
+  const keepPaid = canMarkPaid({
+    kind: values.kind,
+    repeat: values.repeat,
+    dueDay: typeof dueDay === 'number' ? dueDay : undefined,
+  });
 
   const base = {
     name: values.name.trim(),
@@ -149,6 +160,7 @@ export function parseBudgetItemForm(
     ...(canSkip(values) && values.skippedMonths.length > 0
       ? { skippedMonths: values.skippedMonths }
       : {}),
+    ...(keepPaid && values.paidMonths.length > 0 ? { paidMonths: values.paidMonths } : {}),
   };
   const parsed: BudgetItemDraft =
     values.kind === 'income'
